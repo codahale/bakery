@@ -82,16 +82,18 @@ impl Site {
                 .to_string_lossy(),
         )?;
 
+        let output_dir = canonical_dir.join("target");
+        let sass_dir = canonical_dir.join("sass");
         let mut site = Site {
             pages,
             templates,
-            dir: canonical_dir.to_path_buf(),
+            dir: canonical_dir,
         };
         site.templates.register_function(
             "sass",
             SassContext {
-                output_dir: canonical_dir.join("target"),
-                sass_dir: canonical_dir.join("sass"),
+                output_dir,
+                sass_dir,
             },
         );
 
