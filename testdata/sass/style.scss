@@ -1,0 +1,69 @@
+@import "poole/variables";
+
+$code-color: #24292e;
+$link-color: #105c8f;
+@import "poole/base";
+@import "poole/type";
+@import "poole/syntax";
+@import "poole/code";
+@import "poole/layout";
+@import "poole/masthead";
+@import "poole/message";
+@import "poole/posts";
+@import "katex";
+
+$body-gray: #222;
+$accent-gray: #666;
+
+.description {
+  color: $accent-gray;
+  margin-bottom: 1rem;
+}
+
+.post-date {
+  color: $accent-gray;
+}
+
+.masthead {
+  margin-bottom: 1rem;
+}
+
+.masthead-title {
+  text-align: left;
+
+  small {
+    color: $accent-gray;
+    opacity: unset;
+  }
+}
+
+h1, h2, h3, h4, h5, h6, footer, .description, .post-date {
+  text-align: center;
+}
+
+
+article {
+  p, ol, ul, dl {
+    font-family: Georgia, serif;
+    color: $body-gray;
+  }
+
+  p img {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  pre, .katex-display, table {
+    color: $body-gray;
+  }
+
+  .related-posts {
+    font-family: $root-font-family;
+
+  }
+}
+
+.related-posts li small, .about small {
+  color: $accent-gray;
+}
