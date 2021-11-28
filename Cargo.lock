@@ -54,7 +54,6 @@ dependencies = [
  "katex",
  "nom",
  "pulldown-cmark",
- "regex",
  "serde",
  "serde_json",
  "tera",
