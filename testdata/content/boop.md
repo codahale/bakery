@@ -1,6 +1,7 @@
 ---
 title: "Another example of things."
 description: Woot wooty woot woot.
+date: 2021-11-28T00:00:00Z
 template: output.html
 ---
 

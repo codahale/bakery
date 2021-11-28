@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
+use atom_syndication::{ContentBuilder, Entry, EntryBuilder, FeedBuilder, Text};
 use chrono::{DateTime, Utc};
 use gray_matter::{engine, Matter};
 use pulldown_cmark::{html, Options, Parser};
@@ -123,6 +124,31 @@ impl Site {
 
             util::write_p(path, html)?;
         }
+
+        Ok(())
+    }
+
+    pub fn render_feed(&self) -> Result<(), Error> {
+        let mut feed_entries: Vec<Entry> = vec![];
+        for page in self.pages.iter().filter(|&p| p.date.is_some()) {
+            feed_entries.push(
+                EntryBuilder::default()
+                    .id(&page.name)
+                    .content(
+                        ContentBuilder::default()
+                            .value(page.content.clone())
+                            .build(),
+                    )
+                    .title(Text::plain(&page.title))
+                    .updated(page.date.unwrap())
+                    .build(),
+            )
+        }
+
+        let feed = FeedBuilder::default().entries(feed_entries).build();
+        let atom = feed.to_string();
+
+        util::write_p(self.dir.join("target").join("atom.xml"), &atom)?;
 
         Ok(())
     }
