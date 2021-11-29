@@ -13,8 +13,9 @@ fn main() -> Result<(), Error> {
 
     let mut site = Site::load(Path::new(&args[0])).expect("error loading site");
 
+    site.clean_output_dir()?;
+    site.copy_assets()?;
     site.render_content()?;
-    site.clean_target_dir()?;
     site.render_html()?;
     site.render_feed()?;
 

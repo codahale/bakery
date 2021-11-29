@@ -3,12 +3,12 @@ use std::{fs, io};
 
 use atom_syndication::{ContentBuilder, Entry, EntryBuilder, FeedBuilder, Text};
 use chrono::{DateTime, Utc};
+use fs_extra::dir::CopyOptions;
 use gray_matter::{engine, Matter};
 use pulldown_cmark::{html, Options, Parser};
 use serde::{Deserialize, Serialize};
 use tera::{Context, Tera};
 use thiserror::Error;
-use walkdir::WalkDir;
 
 use crate::latex::{parse_latex, render_latex};
 use crate::sass::SassContext;
@@ -35,6 +35,9 @@ pub enum Error {
     Io(#[from] io::Error),
 
     #[error(transparent)]
+    Copy(#[from] fs_extra::error::Error),
+
+    #[error(transparent)]
     Json(#[from] serde_json::error::Error),
 
     #[error(transparent)]
@@ -59,7 +62,9 @@ impl Site {
         let canonical_dir = dir.canonicalize()?;
 
         let content_dir = canonical_dir.join(CONTENT_SUBDIR);
-        for path in walk_dir(&content_dir) {
+        for path in glob::glob(&content_dir.join("**").join("*.md").to_string_lossy())?
+            .filter_map(Result::ok)
+        {
             let file = matter.parse(&fs::read_to_string(&path)?);
             let pod = file
                 .data
@@ -77,14 +82,14 @@ impl Site {
 
         let templates = Tera::parse(
             &canonical_dir
-                .join("templates")
+                .join("_templates")
                 .join("**")
                 .join("*")
                 .to_string_lossy(),
         )?;
 
-        let output_dir = canonical_dir.join("target");
-        let sass_dir = canonical_dir.join("sass");
+        let output_dir = canonical_dir.join("_site");
+        let sass_dir = canonical_dir.join("_sass");
         let mut site = Site {
             pages,
             templates,
@@ -101,8 +106,22 @@ impl Site {
         Ok(site)
     }
 
-    pub fn clean_target_dir(&self) -> Result<(), Error> {
-        fs::remove_dir_all(self.dir.join("target"))?;
+    pub fn copy_assets(&self) -> Result<(), Error> {
+        let site_dir = self.dir.join("_site");
+        fs::create_dir(&site_dir)?;
+
+        let paths: Vec<PathBuf> = glob::glob(&self.dir.join("[!_]*").to_string_lossy())?
+            .filter_map(Result::ok)
+            .collect();
+
+        let options = &CopyOptions::new();
+        fs_extra::copy_items(&paths, &site_dir, options)?;
+
+        Ok(())
+    }
+
+    pub fn clean_output_dir(&self) -> Result<(), Error> {
+        fs::remove_dir_all(self.dir.join("_site"))?;
 
         Ok(())
     }
@@ -123,9 +142,9 @@ impl Site {
             let html = self.templates.render(&page.template, &context)?;
 
             let path = if page.name == "index" {
-                self.dir.join("target").join("index.html")
+                self.dir.join("_site").join("index.html")
             } else {
-                self.dir.join("target").join(&page.name).join("index.html")
+                self.dir.join("_site").join(&page.name).join("index.html")
             };
 
             util::write_p(path, html)?;
@@ -154,7 +173,7 @@ impl Site {
         let feed = FeedBuilder::default().entries(feed_entries).build();
         let atom = feed.to_string();
 
-        util::write_p(self.dir.join("target").join("atom.xml"), &atom)?;
+        util::write_p(self.dir.join("_site").join("atom.xml"), &atom)?;
 
         Ok(())
     }
@@ -182,24 +201,7 @@ struct RenderContext {
     page: Page,
 }
 
-const CONTENT_SUBDIR: &str = "content";
-const MARKDOWN_EXT: &str = "md";
-
-fn walk_dir<P: AsRef<Path>>(dir: P) -> Vec<PathBuf> {
-    WalkDir::new(dir)
-        .into_iter()
-        .filter_map(|entry| entry.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .unwrap_or_default()
-                .to_str()
-                .unwrap_or("")
-                == MARKDOWN_EXT
-        })
-        .map(|e| e.path().to_path_buf())
-        .collect()
-}
+const CONTENT_SUBDIR: &str = "_content";
 
 fn render_markdown(content: &str) -> String {
     let mut out = String::with_capacity(content.len() * 2);
