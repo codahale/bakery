@@ -9,9 +9,9 @@
     {{ content | safe }}
 
     <ul>
-    {%- for page in site.pages | filter(attribute="date") | sort(attribute="date") %}
+    {%- for page in site.pages | filter(attribute="date") | sort(attribute="date") | reverse %}
         <li><a href="/{{ page.name }}">{{ page.title }}</a></li>
-    {%- endfor -%}
+    {%- endfor %}
     </ul>
 </body>
 </html>
