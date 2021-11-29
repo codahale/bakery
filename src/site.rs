@@ -105,11 +105,16 @@ impl Site {
     }
 
     pub fn render_content(&mut self) -> Result<()> {
+        let opts = Options::all();
+
         for page in self.pages.iter_mut() {
-            page.content = render_markdown(&render_latex(
-                parse_latex(&page.content)
-                    .with_context(|| format!("Invalid LaTeX delimiters in page {}", page.name))?,
-            )?);
+            let mut out = String::with_capacity(page.content.len() * 2);
+            let latex_ast = parse_latex(&page.content)
+                .with_context(|| format!("Invalid LaTeX delimiters in page {}", page.name))?;
+            let latex_html = render_latex(latex_ast)?;
+            let parser = Parser::new_ext(&latex_html, opts);
+            html::push_html(&mut out, parser);
+            page.content = out;
         }
 
         Ok(())
@@ -181,22 +186,8 @@ pub struct Page {
     content: String,
 }
 
-#[derive(Debug, Serialize)]
-struct RenderContext {
-    page: Page,
-}
-
 const CONTENT_SUBDIR: &str = "_content";
 const SITE_SUBDIR: &str = "_site";
 const SASS_SUBDIR: &str = "_sass";
 const FEED_FILENAME: &str = "atom.xml";
 const INDEX_HTML: &str = "index.html";
-
-fn render_markdown(content: &str) -> String {
-    let mut out = String::with_capacity(content.len() * 2);
-    let opts = Options::all();
-    let p = Parser::new_ext(content, opts);
-    html::push_html(&mut out, p);
-
-    out
-}
