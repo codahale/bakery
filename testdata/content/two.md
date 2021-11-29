@@ -1,8 +1,8 @@
 ---
-title: "Another example of things."
+title: "Two"
 description: Woot wooty woot woot.
 date: 2021-11-28T00:00:00Z
-template: output.html
+template: page.html
 ---
 
 # This is markdown.

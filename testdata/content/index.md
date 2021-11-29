@@ -1,7 +1,7 @@
 ---
 title: "Hello and welcome."
 description: "The main page."
-template: output.html
+template: index.html
 ---
 
 Beep boop.
