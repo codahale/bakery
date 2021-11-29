@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Context, Result};
 use katex::Opts;
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_until};
@@ -6,16 +7,6 @@ use nom::combinator::{eof, map, peek};
 use nom::multi::many_till;
 use nom::sequence::delimited;
 use nom::IResult;
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error(transparent)]
-    LaTeXParsing(#[from] katex::Error),
-
-    #[error("bad LaTeX delimiters")]
-    BadDelimiters,
-}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AST {
@@ -24,7 +15,7 @@ pub enum AST {
     BlockEq(String),
 }
 
-pub fn render_latex(ast: Vec<AST>) -> Result<String, Error> {
+pub fn render_latex(ast: Vec<AST>) -> Result<String> {
     let block_opts = Opts::builder()
         .display_mode(true)
         .trust(true)
@@ -40,15 +31,17 @@ pub fn render_latex(ast: Vec<AST>) -> Result<String, Error> {
     for item in ast {
         out += &match item {
             AST::Literal(s) => s,
-            AST::InlineEq(s) => katex::render_with_opts(&s, &inline_opts)?,
-            AST::BlockEq(s) => katex::render_with_opts(&s, &block_opts)?,
+            AST::InlineEq(s) => katex::render_with_opts(&s, &inline_opts)
+                .with_context(|| format!("Invalid LaTeX equation: {:?}", s))?,
+            AST::BlockEq(s) => katex::render_with_opts(&s, &block_opts)
+                .with_context(|| format!("Invalid LaTeX equation: {:?}", s))?,
         }
     }
 
     Ok(out)
 }
 
-pub fn parse_latex(i: &str) -> Result<Vec<AST>, Error> {
+pub fn parse_latex(i: &str) -> Result<Vec<AST>> {
     map(
         many_till(
             alt((parse_block_equation, parse_inline_equation, parse_text)),
@@ -57,7 +50,7 @@ pub fn parse_latex(i: &str) -> Result<Vec<AST>, Error> {
         |(ast, _)| ast,
     )(i)
     .map(|(_, ast)| ast)
-    .map_err(|_| Error::BadDelimiters)
+    .map_err(|_| anyhow!("Invalid LaTeX delimiters"))
 }
 
 const INLINE_START_DELIM: &str = r#"\\("#;

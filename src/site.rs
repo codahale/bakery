@@ -1,45 +1,18 @@
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::{fs, io};
 
+use anyhow::{anyhow, Context, Result};
 use atom_syndication::{ContentBuilder, Entry, EntryBuilder, FeedBuilder, Text};
 use chrono::{DateTime, Utc};
 use fs_extra::dir::CopyOptions;
 use gray_matter::{engine, Matter};
 use pulldown_cmark::{html, Options, Parser};
 use serde::{Deserialize, Serialize};
-use tera::{Context, Tera};
-use thiserror::Error;
+use tera::{Context as TeraContext, Tera};
 
 use crate::latex::{parse_latex, render_latex};
 use crate::sass::SassContext;
-use crate::{latex, util};
-
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error(transparent)]
-    BadGlob(#[from] glob::PatternError),
-
-    #[error("missing front matter in page `{0}`")]
-    MissingFrontMatter(PathBuf),
-
-    #[error("invalid front matter in page `{0}`: {1}")]
-    InvalidFrontMatter(PathBuf, #[source] serde_json::error::Error),
-
-    #[error(transparent)]
-    LaTeXParsing(#[from] latex::Error),
-
-    #[error(transparent)]
-    Io(#[from] io::Error),
-
-    #[error(transparent)]
-    Copy(#[from] fs_extra::error::Error),
-
-    #[error(transparent)]
-    Json(#[from] serde_json::error::Error),
-
-    #[error(transparent)]
-    Template(#[from] tera::Error),
-}
+use crate::util;
 
 #[derive(Debug, Serialize)]
 pub struct Site {
@@ -53,22 +26,28 @@ pub struct Site {
 }
 
 impl Site {
-    pub fn load(dir: &Path) -> Result<Site, Error> {
+    pub fn load(dir: &Path) -> Result<Site> {
         let matter = Matter::<engine::YAML>::new();
         let mut pages = vec![];
-        let canonical_dir = dir.canonicalize()?;
+        let canonical_dir = dir
+            .canonicalize()
+            .with_context(|| format!("Failed to find site directory: {:?}", dir))?;
 
         let content_dir = canonical_dir.join(CONTENT_SUBDIR);
-        for path in glob::glob(&content_dir.join("**").join("*.md").to_string_lossy())?
+        for path in glob::glob(&content_dir.join("**").join("*.md").to_string_lossy())
+            .with_context(|| format!("Failed to find content directory: {:?}", &content_dir))?
             .filter_map(Result::ok)
         {
-            let file = matter.parse(&fs::read_to_string(&path)?);
+            let file = matter.parse(
+                &fs::read_to_string(&path)
+                    .with_context(|| format!("Failed to read file {:?}", &path))?,
+            );
             let pod = file
                 .data
-                .ok_or_else(|| Error::MissingFrontMatter(path.to_path_buf()))?;
+                .ok_or_else(|| anyhow!("Missing front matter in {:?}", &path))?;
             let mut page: Page = pod
                 .deserialize()
-                .map_err(|e| Error::InvalidFrontMatter(path.to_path_buf(), e))?;
+                .with_context(|| format!("Invalid front matter in {:?}", &path))?;
             page.content = file.content;
             page.excerpt = file.excerpt;
             let mut page_name = path.strip_prefix(&content_dir).unwrap().to_path_buf();
@@ -85,8 +64,8 @@ impl Site {
                 .to_string_lossy(),
         )?;
 
-        let output_dir = canonical_dir.join("_site");
-        let sass_dir = canonical_dir.join("_sass");
+        let output_dir = canonical_dir.join(SITE_SUBDIR);
+        let sass_dir = canonical_dir.join(SASS_SUBDIR);
         let mut site = Site {
             pages,
             templates,
@@ -103,45 +82,54 @@ impl Site {
         Ok(site)
     }
 
-    pub fn copy_assets(&self) -> Result<(), Error> {
-        let site_dir = self.dir.join("_site");
+    pub fn copy_assets(&self) -> Result<()> {
+        let site_dir = self.dir.join(SITE_SUBDIR);
         fs::create_dir(&site_dir)?;
 
-        let paths: Vec<PathBuf> = glob::glob(&self.dir.join("[!_]*").to_string_lossy())?
+        let paths: Vec<PathBuf> = glob::glob(&self.dir.join("[!_]*").to_string_lossy())
+            .context("Failed to find site directory")?
             .filter_map(Result::ok)
             .collect();
 
         let options = &CopyOptions::new();
-        fs_extra::copy_items(&paths, &site_dir, options)?;
+        fs_extra::copy_items(&paths, &site_dir, options)
+            .with_context(|| format!("Error copying assets: {:?}", paths))?;
 
         Ok(())
     }
 
-    pub fn clean_output_dir(&self) -> Result<(), Error> {
-        fs::remove_dir_all(self.dir.join("_site"))?;
+    pub fn clean_output_dir(&self) -> Result<()> {
+        fs::remove_dir_all(self.dir.join(SITE_SUBDIR))?;
 
         Ok(())
     }
 
-    pub fn render_content(&mut self) -> Result<(), Error> {
+    pub fn render_content(&mut self) -> Result<()> {
         for page in self.pages.iter_mut() {
-            page.content = render_markdown(&render_latex(parse_latex(&page.content)?)?);
+            page.content = render_markdown(&render_latex(
+                parse_latex(&page.content)
+                    .with_context(|| format!("Invalid LaTeX delimiters in page {}", page.name))?,
+            )?);
         }
 
         Ok(())
     }
 
-    pub fn render_html(&mut self) -> Result<(), Error> {
+    pub fn render_html(&mut self) -> Result<()> {
         for page in self.pages.iter() {
-            let mut context = Context::from_serialize(page)?;
+            let mut context = TeraContext::from_serialize(page)
+                .with_context(|| format!("Error rendering page {}", page.name))?;
             context.insert("site", &self);
 
-            let html = self.templates.render(&page.template, &context)?;
+            let html = self
+                .templates
+                .render(&page.template, &context)
+                .with_context(|| format!("Error rendering page {}", page.name))?;
 
             let path = if page.name == "index" {
-                self.dir.join("_site").join("index.html")
+                self.dir.join(SITE_SUBDIR).join(INDEX_HTML)
             } else {
-                self.dir.join("_site").join(&page.name).join("index.html")
+                self.dir.join(SITE_SUBDIR).join(&page.name).join(INDEX_HTML)
             };
 
             util::write_p(path, html)?;
@@ -150,7 +138,7 @@ impl Site {
         Ok(())
     }
 
-    pub fn render_feed(&self) -> Result<(), Error> {
+    pub fn render_feed(&self) -> Result<()> {
         let mut feed_entries: Vec<Entry> = vec![];
         for page in self.pages.iter().filter(|&p| p.date.is_some()) {
             feed_entries.push(
@@ -170,7 +158,7 @@ impl Site {
         let feed = FeedBuilder::default().entries(feed_entries).build();
         let atom = feed.to_string();
 
-        util::write_p(self.dir.join("_site").join("atom.xml"), &atom)?;
+        util::write_p(self.dir.join(SITE_SUBDIR).join(FEED_FILENAME), &atom)?;
 
         Ok(())
     }
@@ -199,6 +187,10 @@ struct RenderContext {
 }
 
 const CONTENT_SUBDIR: &str = "_content";
+const SITE_SUBDIR: &str = "_site";
+const SASS_SUBDIR: &str = "_sass";
+const FEED_FILENAME: &str = "atom.xml";
+const INDEX_HTML: &str = "index.html";
 
 fn render_markdown(content: &str) -> String {
     let mut out = String::with_capacity(content.len() * 2);

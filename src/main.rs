@@ -1,14 +1,15 @@
 use std::env;
 use std::path::Path;
 
-use crate::site::{Error, Site};
+use crate::site::Site;
+use anyhow::Result;
 
 mod latex;
 mod sass;
 mod site;
 mod util;
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<()> {
     let args: Vec<String> = env::args().skip(1).collect();
 
     let mut site = Site::load(Path::new(&args[0])).expect("error loading site");
