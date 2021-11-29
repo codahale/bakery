@@ -4,4 +4,4 @@ description: "The main page."
 template: index.html
 ---
 
-Beep boop.
+Beep boop, I have $5. You have $4.

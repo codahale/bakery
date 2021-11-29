@@ -9,7 +9,7 @@ template: page.html
 
 <p class="message">Some pass-through HTML.</p>
 
-Oh good! This is an inline doohicky: $$N=100$$.
+Oh good! This is an inline doohicky: \\(N=100\\).
 
 $$
 \begin{matrix}
@@ -24,6 +24,6 @@ $$
 X(N) = \dfrac{\lambda N}{1+\sigma(N-1)+\kappa N(N-1)}
 $$
 
-* $$\sigma$$, the overhead of contention
-* $$\kappa$$, the overhead of crosstalk
-* $$\lambda$$, how fast the system operates in ideal conditions
+* \\(\sigma\\), the overhead of contention
+* \\(\kappa\\), the overhead of crosstalk
+* \\(\lambda\\), how fast the system operates in ideal conditions

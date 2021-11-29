@@ -12,7 +12,7 @@ use thiserror::Error;
 
 use crate::latex::{parse_latex, render_latex};
 use crate::sass::SassContext;
-use crate::util;
+use crate::{latex, util};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -26,10 +26,7 @@ pub enum Error {
     InvalidFrontMatter(PathBuf, #[source] serde_json::error::Error),
 
     #[error(transparent)]
-    BlockParsing(#[from] nom::error::Error<String>),
-
-    #[error(transparent)]
-    LaTeXParsing(#[from] katex::Error),
+    LaTeXParsing(#[from] latex::Error),
 
     #[error(transparent)]
     Io(#[from] io::Error),

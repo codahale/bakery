@@ -1,10 +1,21 @@
 use katex::Opts;
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_until};
-use nom::combinator::map;
-use nom::multi::many0;
+use nom::character::complete::anychar;
+use nom::combinator::{eof, map, peek};
+use nom::multi::many_till;
 use nom::sequence::delimited;
-use nom::{Err, IResult, Parser};
+use nom::IResult;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error(transparent)]
+    LaTeXParsing(#[from] katex::Error),
+
+    #[error("bad LaTeX delimiters")]
+    BadDelimiters,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AST {
@@ -13,24 +24,7 @@ pub enum AST {
     BlockEq(String),
 }
 
-pub fn parse_latex(i: &str) -> Result<Vec<AST>, nom::error::Error<String>> {
-    many0(alt((
-        parse_block_equation,
-        parse_inline_equation,
-        take_until("$$").map(|s: &str| AST::Literal(s.to_string())),
-    )))(i)
-    .map(|(rest, mut ast)| {
-        ast.push(AST::Literal(rest.to_string()));
-        ast
-    })
-    .map_err(|e| match e {
-        Err::Incomplete(_) => unreachable!(),
-        Err::Error(e) => nom::error::Error::new(e.input.to_string(), e.code),
-        Err::Failure(_) => unreachable!(),
-    })
-}
-
-pub fn render_latex(ast: Vec<AST>) -> katex::Result<String> {
+pub fn render_latex(ast: Vec<AST>) -> Result<String, Error> {
     let block_opts = Opts::builder()
         .display_mode(true)
         .trust(true)
@@ -54,33 +48,83 @@ pub fn render_latex(ast: Vec<AST>) -> katex::Result<String> {
     Ok(out)
 }
 
+pub fn parse_latex(i: &str) -> Result<Vec<AST>, Error> {
+    map(
+        many_till(
+            alt((parse_block_equation, parse_inline_equation, parse_text)),
+            eof,
+        ),
+        |(ast, _)| ast,
+    )(i)
+    .map(|(_, ast)| ast)
+    .map_err(|_| Error::BadDelimiters)
+}
+
+const INLINE_START_DELIM: &str = r#"\\("#;
+const INLINE_END_DELIM: &str = r#"\\)"#;
+
 fn parse_inline_equation(i: &str) -> IResult<&str, AST> {
-    const DELIM: &str = "$$";
     delimited(
-        tag(DELIM),
-        map(take_until(DELIM), |s: &str| AST::InlineEq(s.to_string())),
-        tag(DELIM),
+        tag(INLINE_START_DELIM),
+        map(take_until(INLINE_END_DELIM), |s: &str| {
+            AST::InlineEq(s.to_string())
+        }),
+        tag(INLINE_END_DELIM),
     )(i)
 }
 
+const BLOCK_START_DELIM: &str = r#"$$"#;
+const BLOCK_END_DELIM: &str = r#"$$"#;
+
 fn parse_block_equation(i: &str) -> IResult<&str, AST> {
     delimited(
-        tag("$$\n"),
-        map(take_until("\n$$"), |s: &str| AST::BlockEq(s.to_string())),
-        tag("\n$$"),
+        tag(BLOCK_START_DELIM),
+        map(take_until(BLOCK_END_DELIM), |s: &str| {
+            AST::BlockEq(s.to_string())
+        }),
+        tag(BLOCK_END_DELIM),
+    )(i)
+}
+
+fn parse_text(i: &str) -> IResult<&str, AST> {
+    map(
+        many_till(
+            anychar,
+            peek(alt((eof, tag(BLOCK_START_DELIM), tag(INLINE_START_DELIM)))),
+        ),
+        |(a, _)| AST::Literal(a.into_iter().collect()),
     )(i)
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use nom::error::ErrorKind;
+
+    #[test]
+    fn regular_text() {
+        assert_eq!(
+            Ok(("$$", AST::Literal("one two three ".to_string()))),
+            parse_text("one two three $$")
+        );
+
+        assert_eq!(
+            Ok((r#"\\("#, AST::Literal("one two three ".to_string()))),
+            parse_text(r#"one two three \\("#)
+        );
+
+        assert_eq!(
+            Ok(("", AST::Literal("one two three".to_string()))),
+            parse_text("one two three")
+        );
+
+        assert_eq!(Ok(("", AST::Literal("".to_string()))), parse_text(""));
+    }
 
     #[test]
     fn inline_equation() {
         assert_eq!(
             Ok(("", AST::InlineEq("one two three".to_string()))),
-            parse_inline_equation("$$one two three$$")
+            parse_inline_equation(r#"\\(one two three\\)"#)
         );
 
         assert!(parse_inline_equation("goof troop").is_err());
@@ -90,56 +134,35 @@ mod test {
     fn block_equation() {
         assert_eq!(
             Ok(("", AST::BlockEq("one two three".to_string()))),
-            parse_block_equation("$$\none two three\n$$")
+            parse_block_equation("$$one two three$$")
         );
-
-        assert!(parse_block_equation("$$goof troop$$").is_err());
     }
 
     #[test]
     fn mixed_content() {
+        assert!(parse_latex(r#"one two $$ three"#).is_err());
+
         assert_eq!(
-            Err(nom::error::Error {
-                input: "$$ three".to_string(),
-                code: ErrorKind::Many0
-            }),
-            parse_latex("one two $$ three")
+            vec![AST::Literal("one two three".to_string())],
+            parse_latex(r#"one two three"#).unwrap()
         );
 
         assert_eq!(
-            Ok(vec![AST::Literal("one two three".to_string())]),
-            parse_latex("one two three")
-        );
-
-        assert_eq!(
-            Ok(vec![
+            vec![
                 AST::Literal("one two ".to_string()),
-                AST::InlineEq("N=1".to_string()),
-                AST::Literal(" three".to_string()),
-            ]),
-            parse_latex("one two $$N=1$$ three")
-        );
-
-        assert_eq!(
-            Ok(vec![
-                AST::Literal("one two ".to_string()),
-                AST::InlineEq("N=1".to_string()),
-                AST::Literal(" and ".to_string()),
-                AST::InlineEq("N=2".to_string()),
-                AST::Literal(" three".to_string()),
-            ]),
-            parse_latex("one two $$N=1$$ and $$N=2$$ three")
-        );
-
-        assert_eq!(
-            Ok(vec![
-                AST::Literal("one two \n".to_string()),
                 AST::BlockEq("N=1".to_string()),
-                AST::Literal("\n and ".to_string()),
-                AST::InlineEq("N=2".to_string()),
                 AST::Literal(" three".to_string()),
-            ]),
-            parse_latex("one two \n$$\nN=1\n$$\n and $$N=2$$ three")
+            ],
+            parse_latex(r#"one two $$N=1$$ three"#).unwrap()
+        );
+
+        assert_eq!(
+            vec![
+                AST::Literal("one two ".to_string()),
+                AST::InlineEq("N=1".to_string()),
+                AST::Literal(" three".to_string()),
+            ],
+            parse_latex(r#"one two \\(N=1\\) three"#).unwrap()
         );
     }
 
@@ -155,7 +178,8 @@ mod test {
         .expect("error rendering LaTeX");
 
         assert_eq!(
-        "one <span class=\"katex\"><span class=\"katex-mathml\"><math xmlns=\"http://www.w3.org/1998/Math/MathML\"><semantics><mrow><mi>N</mi></mrow><annotation encoding=\"application/x-tex\">N</annotation></semantics></math></span><span class=\"katex-html\" aria-hidden=\"true\"><span class=\"base\"><span class=\"strut\" style=\"height:0.6833em;\"></span><span class=\"mord mathnormal\" style=\"margin-right:0.10903em;\">N</span></span></span></span> <span class=\"katex-display\"><span class=\"katex\"><span class=\"katex-mathml\"><math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><semantics><mrow><mi>σ</mi></mrow><annotation encoding=\"application/x-tex\">\\sigma</annotation></semantics></math></span><span class=\"katex-html\" aria-hidden=\"true\"><span class=\"base\"><span class=\"strut\" style=\"height:0.4306em;\"></span><span class=\"mord mathnormal\" style=\"margin-right:0.03588em;\">σ</span></span></span></span></span> two",
-         html)
+            r#"one <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em;"></span><span class="mord mathnormal" style="margin-right:0.10903em;">N</span></span></span></span> <span class="katex-display"><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mi>σ</mi></mrow><annotation encoding="application/x-tex">\sigma</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.4306em;"></span><span class="mord mathnormal" style="margin-right:0.03588em;">σ</span></span></span></span></span> two"#,
+            html
+        )
     }
 }
