@@ -101,6 +101,12 @@ impl Site {
         Ok(site)
     }
 
+    pub fn clean_target_dir(&self) -> Result<(), Error> {
+        fs::remove_dir_all(self.dir.join("target"))?;
+
+        Ok(())
+    }
+
     pub fn render_content(&mut self) -> Result<(), Error> {
         for page in self.pages.iter_mut() {
             page.content = render_markdown(&render_latex(parse_latex(&page.content)?)?);
