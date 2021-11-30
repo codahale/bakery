@@ -27,6 +27,7 @@ impl Function for SassContext {
                     util::write_p(&output_path, compiled)?;
                 }
 
+                // TODO define output relative to site URL
                 Ok(Value::String(format!("/css/{}", output)))
             }
             _ => Err(tera::Error::msg("invalid args")),

@@ -173,7 +173,12 @@ impl Site {
             })
             .collect();
 
-        let atom = FeedBuilder::default().entries(entries).build().to_string();
+        let atom = FeedBuilder::default()
+            .title("TBD") // TODO define site title
+            .id("TBD") // TODO define site ID
+            .entries(entries)
+            .build()
+            .to_string();
         util::write_p(self.dir.join(SITE_SUBDIR).join(FEED_FILENAME), &atom)?;
 
         Ok(())
