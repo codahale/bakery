@@ -10,6 +10,7 @@ use pulldown_cmark::{html, Options, Parser};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use tera::{Context as TeraContext, Tera};
+use url::Url;
 
 use crate::latex::{parse_latex, render_latex};
 use crate::sass::SassContext;
@@ -18,6 +19,7 @@ use crate::util;
 #[derive(Debug, Serialize)]
 pub struct Site {
     pages: Vec<Page>,
+    config: SiteConfig,
 
     #[serde(skip_serializing)]
     templates: Tera,
@@ -28,7 +30,7 @@ pub struct Site {
 
 impl Site {
     pub fn load(dir: &Path) -> Result<Site> {
-        let matter = Matter::<engine::YAML>::new();
+        let matter = Matter::<engine::TOML>::new();
         let canonical_dir = dir
             .canonicalize()
             .with_context(|| format!("Failed to find site directory: {:?}", dir))?;
@@ -69,11 +71,15 @@ impl Site {
                 .to_string_lossy(),
         )?;
 
+        let config: SiteConfig = toml::from_str(&fs::read_to_string(dir.join("bakery.toml"))?)?;
+        let base_url = config.base_url.clone();
+
         let output_dir = canonical_dir.join(SITE_SUBDIR);
         let sass_dir = canonical_dir.join(SASS_SUBDIR);
         let mut site = Site {
             pages,
             templates,
+            config,
             dir: canonical_dir,
         };
         site.templates.register_function(
@@ -81,6 +87,7 @@ impl Site {
             SassContext {
                 output_dir,
                 sass_dir,
+                base_url,
             },
         );
 
@@ -174,8 +181,8 @@ impl Site {
             .collect();
 
         let atom = FeedBuilder::default()
-            .title("TBD") // TODO define site title
-            .id("TBD") // TODO define site ID
+            .title(self.config.title.as_str())
+            .id(self.config.base_url.as_str())
             .entries(entries)
             .build()
             .to_string();
@@ -186,7 +193,13 @@ impl Site {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct Page {
+struct SiteConfig {
+    base_url: Url,
+    title: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct Page {
     title: String,
     description: String,
     template: String,
