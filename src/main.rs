@@ -1,8 +1,9 @@
 use std::env;
 use std::path::Path;
 
-use crate::site::Site;
 use anyhow::Result;
+
+use crate::site::Site;
 
 mod latex;
 mod sass;
