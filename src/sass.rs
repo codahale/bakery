@@ -24,7 +24,7 @@ impl Function for SassContext {
                         &Options::default(),
                     )
                     .map_err(|e| tera::Error::msg(e.to_string()))?;
-                    util::write_p(&output_path, compiled).map_err(tera::Error::io_error)?;
+                    util::write_p(&output_path, compiled)?;
                 }
 
                 Ok(Value::String(format!("/css/{}", output)))
