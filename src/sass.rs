@@ -1,9 +1,11 @@
-use crate::util;
-use grass::Options;
-use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tera::Function;
+
+use grass::Options;
+use serde_json::Value;
+use tera::{Error, Function, Result};
+
+use crate::util;
 
 pub struct SassContext {
     pub sass_dir: PathBuf,
@@ -11,7 +13,7 @@ pub struct SassContext {
 }
 
 impl Function for SassContext {
-    fn call(&self, args: &HashMap<String, Value>) -> tera::Result<Value> {
+    fn call(&self, args: &HashMap<String, Value>) -> Result<Value> {
         let input = args.get("input");
         let output = args.get("output");
 
@@ -23,14 +25,14 @@ impl Function for SassContext {
                         &self.sass_dir.join(input).to_string_lossy(),
                         &Options::default(),
                     )
-                    .map_err(|e| tera::Error::msg(e.to_string()))?;
+                    .map_err(|e| Error::msg(e.to_string()))?;
                     util::write_p(&output_path, compiled)?;
                 }
 
                 // TODO define output relative to site URL
                 Ok(Value::String(format!("/css/{}", output)))
             }
-            _ => Err(tera::Error::msg("invalid args")),
+            _ => Err(Error::msg("invalid args")),
         }
     }
 
