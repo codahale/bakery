@@ -7,6 +7,7 @@ use chrono::{DateTime, Utc};
 use fs_extra::dir::CopyOptions;
 use gray_matter::{engine, Matter};
 use pulldown_cmark::{html, Options, Parser};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use tera::{Context as TeraContext, Tera};
 
@@ -28,33 +29,37 @@ pub struct Site {
 impl Site {
     pub fn load(dir: &Path) -> Result<Site> {
         let matter = Matter::<engine::YAML>::new();
-        let mut pages = vec![];
         let canonical_dir = dir
             .canonicalize()
             .with_context(|| format!("Failed to find site directory: {:?}", dir))?;
 
         let content_dir = canonical_dir.join(CONTENT_SUBDIR);
-        for path in glob::glob(&content_dir.join("**").join("*.md").to_string_lossy())
+        let paths = glob::glob(&content_dir.join("**").join("*.md").to_string_lossy())
             .with_context(|| format!("Failed to find content directory: {:?}", &content_dir))?
             .filter_map(Result::ok)
-        {
-            let file = matter.parse(
-                &fs::read_to_string(&path)
-                    .with_context(|| format!("Failed to read file {:?}", &path))?,
-            );
-            let pod = file
-                .data
-                .ok_or_else(|| anyhow!("Missing front matter in {:?}", &path))?;
-            let mut page: Page = pod
-                .deserialize()
-                .with_context(|| format!("Invalid front matter in {:?}", &path))?;
-            page.content = file.content;
-            page.excerpt = file.excerpt;
-            let mut page_name = path.strip_prefix(&content_dir).unwrap().to_path_buf();
-            page_name.set_extension("");
-            page.name = page_name.to_string_lossy().to_string();
-            pages.push(page);
-        }
+            .collect::<Vec<PathBuf>>();
+
+        let pages = paths
+            .par_iter()
+            .map(|path| {
+                let file = matter.parse(
+                    &fs::read_to_string(path)
+                        .with_context(|| format!("Failed to read file {:?}", path))?,
+                );
+                let pod = file
+                    .data
+                    .ok_or_else(|| anyhow!("Missing front matter in {:?}", path))?;
+                let mut page: Page = pod
+                    .deserialize()
+                    .with_context(|| format!("Invalid front matter in {:?}", path))?;
+                page.content = file.content;
+                page.excerpt = file.excerpt;
+                let mut page_name = path.strip_prefix(&content_dir).unwrap().to_path_buf();
+                page_name.set_extension("");
+                page.name = page_name.to_string_lossy().to_string();
+                Ok(page)
+            })
+            .collect::<Result<Vec<Page>>>()?;
 
         let templates = Tera::parse(
             &canonical_dir
@@ -86,10 +91,10 @@ impl Site {
         let site_dir = self.dir.join(SITE_SUBDIR);
         fs::create_dir(&site_dir)?;
 
-        let paths: Vec<PathBuf> = glob::glob(&self.dir.join("[!_]*").to_string_lossy())
-            .context("Failed to find site directory")?
-            .filter_map(Result::ok)
-            .collect();
+        let paths = glob::glob(&self.dir.join("[!_]*").to_string_lossy())
+            .with_context(|| format!("Error traversing {:?}", &site_dir))?
+            .collect::<std::result::Result<Vec<PathBuf>, glob::GlobError>>()
+            .with_context(|| format!("Error traversing {:?}", &site_dir))?;
 
         let options = &CopyOptions::new();
         fs_extra::copy_items(&paths, &site_dir, options)
@@ -107,46 +112,54 @@ impl Site {
     pub fn render_content(&mut self) -> Result<()> {
         let opts = Options::all();
 
-        for page in self.pages.iter_mut() {
-            let mut out = String::with_capacity(page.content.len() * 2);
-            let latex_ast = parse_latex(&page.content)
-                .with_context(|| format!("Invalid LaTeX delimiters in page {}", page.name))?;
-            let latex_html = render_latex(latex_ast)?;
-            let parser = Parser::new_ext(&latex_html, opts);
-            html::push_html(&mut out, parser);
-            page.content = out;
-        }
+        self.pages
+            .par_iter_mut()
+            .map(|page| {
+                let mut out = String::with_capacity(page.content.len() * 2);
+                let latex_ast = parse_latex(&page.content)
+                    .with_context(|| format!("Invalid LaTeX delimiters in page {}", page.name))?;
+                let latex_html = render_latex(latex_ast)?;
+                let parser = Parser::new_ext(&latex_html, opts);
+                html::push_html(&mut out, parser);
+                page.content = out;
 
-        Ok(())
+                Ok(())
+            })
+            .collect()
     }
 
     pub fn render_html(&mut self) -> Result<()> {
-        for page in self.pages.iter() {
-            let mut context = TeraContext::from_serialize(page)
-                .with_context(|| format!("Error rendering page {}", page.name))?;
-            context.insert("site", &self);
+        self.pages
+            .par_iter()
+            .map(|page| {
+                let mut context = TeraContext::from_serialize(page)
+                    .with_context(|| format!("Error rendering page {}", page.name))?;
+                context.insert("site", &self);
 
-            let html = self
-                .templates
-                .render(&page.template, &context)
-                .with_context(|| format!("Error rendering page {}", page.name))?;
+                let html = self
+                    .templates
+                    .render(&page.template, &context)
+                    .with_context(|| format!("Error rendering page {}", page.name))?;
 
-            let path = if page.name == "index" {
-                self.dir.join(SITE_SUBDIR).join(INDEX_HTML)
-            } else {
-                self.dir.join(SITE_SUBDIR).join(&page.name).join(INDEX_HTML)
-            };
+                let path = if page.name == "index" {
+                    self.dir.join(SITE_SUBDIR).join(INDEX_HTML)
+                } else {
+                    self.dir.join(SITE_SUBDIR).join(&page.name).join(INDEX_HTML)
+                };
 
-            util::write_p(path, html)?;
-        }
+                util::write_p(path, html)?;
 
-        Ok(())
+                Ok(())
+            })
+            .collect()
     }
 
     pub fn render_feed(&self) -> Result<()> {
-        let mut feed_entries: Vec<Entry> = vec![];
-        for page in self.pages.iter().filter(|&p| p.date.is_some()) {
-            feed_entries.push(
+        let entries: Vec<Entry> = self
+            .pages
+            .iter()
+            .filter(|&p| p.date.is_some())
+            .map(|page| {
                 EntryBuilder::default()
                     .id(&page.name)
                     .content(
@@ -156,13 +169,11 @@ impl Site {
                     )
                     .title(Text::plain(&page.title))
                     .updated(page.date.unwrap())
-                    .build(),
-            )
-        }
+                    .build()
+            })
+            .collect();
 
-        let feed = FeedBuilder::default().entries(feed_entries).build();
-        let atom = feed.to_string();
-
+        let atom = FeedBuilder::default().entries(entries).build().to_string();
         util::write_p(self.dir.join(SITE_SUBDIR).join(FEED_FILENAME), &atom)?;
 
         Ok(())
