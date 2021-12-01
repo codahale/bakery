@@ -32,12 +32,11 @@ impl Function for SassContext {
                 }
 
                 let mut css_url = self.base_url.clone();
-                let mut path = css_url
+                css_url
                     .path_segments_mut()
-                    .map_err(|_| tera::Error::msg("Invalid site URL"))?;
-                path.push("css");
-                path.push(output);
-                drop(path);
+                    .map_err(|_| tera::Error::msg("Invalid site URL"))?
+                    .push("css")
+                    .push(output);
                 Ok(Value::String(css_url.path().to_string()))
             }
             _ => Err(Error::msg("invalid args")),
