@@ -2,4 +2,7 @@ base_url = "https://www.example.com/"
 title = "Example Site"
 
 [sass]
+compressed = false
+
+[sass.targets]
 "codahale.css" = "style.scss"

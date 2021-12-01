@@ -6,6 +6,7 @@ use anyhow::{anyhow, Context, Result};
 use atom_syndication::{ContentBuilder, Entry, EntryBuilder, FeedBuilder, Text};
 use chrono::{DateTime, Utc};
 use fs_extra::dir::CopyOptions;
+use grass::OutputStyle;
 use gray_matter::{engine, Matter};
 use pulldown_cmark::{html, Options, Parser};
 use rayon::prelude::*;
@@ -108,18 +109,27 @@ impl Site {
         let sass_dir = self.dir.join(SASS_SUBDIR);
         let css_dir = self.dir.join(SITE_SUBDIR).join(CSS_SUBDIR);
 
+        let mut options = grass::Options::default();
+        for path in self.config.sass.load_paths.iter() {
+            options = options.load_path(path);
+        }
+
+        options = options.style(if self.config.sass.compressed {
+            OutputStyle::Compressed
+        } else {
+            OutputStyle::Expanded
+        });
+
         self.config
             .sass
+            .targets
             .par_iter()
             .map(|(output, input)| {
                 let css_path = css_dir.join(output);
                 let sass_path = sass_dir.join(input);
 
-                let css = grass::from_path(
-                    sass_path.to_string_lossy().as_ref(),
-                    &grass::Options::default(),
-                )
-                .map_err(|e| anyhow::Error::msg(e.to_string()))?;
+                let css = grass::from_path(sass_path.to_string_lossy().as_ref(), &options)
+                    .map_err(|e| anyhow::Error::msg(e.to_string()))?;
 
                 util::write_p(&css_path, css)?;
 
@@ -205,12 +215,36 @@ impl Site {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct SiteConfig {
     base_url: Url,
     title: String,
 
+    #[serde(default, skip_serializing)]
+    sass: SassConfig,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct SassConfig {
     #[serde(default)]
-    sass: HashMap<PathBuf, PathBuf>,
+    compressed: bool,
+
+    #[serde(default)]
+    targets: HashMap<PathBuf, PathBuf>,
+
+    #[serde(default)]
+    load_paths: Vec<PathBuf>,
+}
+
+impl Default for SassConfig {
+    fn default() -> Self {
+        Self {
+            compressed: false,
+            targets: Default::default(),
+            load_paths: Default::default(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
