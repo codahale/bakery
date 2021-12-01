@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -13,7 +14,6 @@ use tera::{Context as TeraContext, Tera};
 use url::Url;
 
 use crate::latex::{parse_latex, render_latex};
-use crate::sass::SassContext;
 use crate::util;
 
 #[derive(Debug, Serialize)]
@@ -72,36 +72,24 @@ impl Site {
         )?;
 
         let config: SiteConfig = toml::from_str(&fs::read_to_string(dir.join("bakery.toml"))?)?;
-        let base_url = config.base_url.clone();
-
-        let output_dir = canonical_dir.join(SITE_SUBDIR);
-        let sass_dir = canonical_dir.join(SASS_SUBDIR);
-        let mut site = Site {
+        let site = Site {
             pages,
             templates,
             config,
             dir: canonical_dir,
         };
-        site.templates.register_function(
-            "sass",
-            SassContext {
-                output_dir,
-                sass_dir,
-                base_url,
-            },
-        );
 
         Ok(site)
     }
 
     pub fn copy_assets(&self) -> Result<()> {
         let site_dir = self.dir.join(SITE_SUBDIR);
-        fs::create_dir(&site_dir)?;
+        let _ = fs::create_dir(&site_dir);
 
         let paths = glob::glob(&self.dir.join("[!_]*").to_string_lossy())
-            .with_context(|| format!("Error traversing {:?}", &site_dir))?
+            .with_context(|| format!("Error traversing {:?}", &self.dir))?
             .collect::<std::result::Result<Vec<PathBuf>, glob::GlobError>>()
-            .with_context(|| format!("Error traversing {:?}", &site_dir))?;
+            .with_context(|| format!("Error traversing {:?}", &self.dir))?;
 
         let options = &CopyOptions::new();
         fs_extra::copy_items(&paths, &site_dir, options)
@@ -111,9 +99,33 @@ impl Site {
     }
 
     pub fn clean_output_dir(&self) -> Result<()> {
-        fs::remove_dir_all(self.dir.join(SITE_SUBDIR))?;
+        let _ = fs::remove_dir_all(self.dir.join(SITE_SUBDIR));
 
         Ok(())
+    }
+
+    pub fn render_sass(&self) -> Result<()> {
+        let sass_dir = self.dir.join(SASS_SUBDIR);
+        let css_dir = self.dir.join(SITE_SUBDIR).join(CSS_SUBDIR);
+
+        self.config
+            .sass
+            .par_iter()
+            .map(|(output, input)| {
+                let css_path = css_dir.join(output);
+                let sass_path = sass_dir.join(input);
+
+                let css = grass::from_path(
+                    sass_path.to_string_lossy().as_ref(),
+                    &grass::Options::default(),
+                )
+                .map_err(|e| anyhow::Error::msg(e.to_string()))?;
+
+                util::write_p(&css_path, css)?;
+
+                Ok(())
+            })
+            .collect::<Result<()>>()
     }
 
     pub fn render_content(&mut self) -> Result<()> {
@@ -196,6 +208,9 @@ impl Site {
 struct SiteConfig {
     base_url: Url,
     title: String,
+
+    #[serde(default)]
+    sass: HashMap<PathBuf, PathBuf>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -218,5 +233,6 @@ struct Page {
 const CONTENT_SUBDIR: &str = "_content";
 const SITE_SUBDIR: &str = "_site";
 const SASS_SUBDIR: &str = "_sass";
+const CSS_SUBDIR: &str = "css";
 const FEED_FILENAME: &str = "atom.xml";
 const INDEX_HTML: &str = "index.html";

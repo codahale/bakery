@@ -1,2 +1,5 @@
 base_url = "https://www.example.com/"
 title = "Example Site"
+
+[sass]
+"codahale.css" = "style.scss"

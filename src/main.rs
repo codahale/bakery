@@ -6,7 +6,6 @@ use anyhow::Result;
 use crate::site::Site;
 
 mod latex;
-mod sass;
 mod site;
 mod util;
 
@@ -16,6 +15,7 @@ fn main() -> Result<()> {
     let mut site = Site::load(Path::new(&args[0])).expect("error loading site");
 
     site.clean_output_dir()?;
+    site.render_sass()?;
     site.copy_assets()?;
     site.render_content()?;
     site.render_html()?;
