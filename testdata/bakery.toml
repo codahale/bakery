@@ -6,3 +6,6 @@ compressed = false
 
 [sass.targets]
 "codahale.css" = "style.scss"
+
+[latex.macros]
+"\\f" = "#1f(#2)"

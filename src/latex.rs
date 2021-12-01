@@ -7,6 +7,7 @@ use nom::combinator::{eof, map, peek};
 use nom::multi::many_till;
 use nom::sequence::delimited;
 use nom::IResult;
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AST {
@@ -15,15 +16,17 @@ pub enum AST {
     BlockEq(String),
 }
 
-pub fn render_latex(ast: Vec<AST>) -> Result<String> {
+pub fn render_latex(ast: Vec<AST>, macros: &HashMap<String, String>) -> Result<String> {
     let block_opts = Opts::builder()
         .display_mode(true)
         .trust(true)
+        .macros(macros.clone())
         .build()
         .unwrap();
     let inline_opts = Opts::builder()
         .display_mode(false)
         .trust(true)
+        .macros(macros.clone())
         .build()
         .unwrap();
     let mut out = String::with_capacity(ast.len() * 100);
@@ -161,13 +164,16 @@ mod test {
 
     #[test]
     fn html() {
-        let html = render_latex(vec![
-            AST::Literal("one ".to_string()),
-            AST::InlineEq("N".to_string()),
-            AST::Literal(" ".to_string()),
-            AST::BlockEq("\\sigma".to_string()),
-            AST::Literal(" two".to_string()),
-        ])
+        let html = render_latex(
+            vec![
+                AST::Literal("one ".to_string()),
+                AST::InlineEq("N".to_string()),
+                AST::Literal(" ".to_string()),
+                AST::BlockEq("\\sigma".to_string()),
+                AST::Literal(" two".to_string()),
+            ],
+            &HashMap::default(),
+        )
         .expect("error rendering LaTeX");
 
         assert_eq!(

@@ -139,7 +139,7 @@ impl Site {
     }
 
     pub fn render_content(&mut self) -> Result<()> {
-        let opts = Options::all();
+        let md_opts = Options::all();
 
         self.pages
             .par_iter_mut()
@@ -147,8 +147,8 @@ impl Site {
                 let mut out = String::with_capacity(page.content.len() * 2);
                 let latex_ast = parse_latex(&page.content)
                     .with_context(|| format!("Invalid LaTeX delimiters in page {}", page.name))?;
-                let latex_html = render_latex(latex_ast)?;
-                let parser = Parser::new_ext(&latex_html, opts);
+                let latex_html = render_latex(latex_ast, &self.config.latex.macros)?;
+                let parser = Parser::new_ext(&latex_html, md_opts);
                 html::push_html(&mut out, parser);
                 page.content = out;
 
@@ -222,6 +222,9 @@ struct SiteConfig {
 
     #[serde(default, skip_serializing)]
     sass: SassConfig,
+
+    #[serde(default, skip_serializing)]
+    latex: LatexConfig,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -243,6 +246,21 @@ impl Default for SassConfig {
             compressed: false,
             targets: Default::default(),
             load_paths: Default::default(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct LatexConfig {
+    #[serde(default)]
+    macros: HashMap<String, String>,
+}
+
+impl Default for LatexConfig {
+    fn default() -> Self {
+        Self {
+            macros: Default::default(),
         }
     }
 }
