@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tera::{Context as TeraContext, Tera};
 use url::Url;
 
-use crate::latex::{parse_latex, render_latex};
+use crate::latex::latex_to_html;
 
 #[derive(Debug, Serialize)]
 pub struct Site {
@@ -144,9 +144,8 @@ impl Site {
             .par_iter_mut()
             .map(|page| {
                 let mut out = String::with_capacity(page.content.len() * 2);
-                let latex_ast = parse_latex(&page.content)
-                    .with_context(|| format!("Invalid LaTeX delimiters in page {}", page.name))?;
-                let latex_html = render_latex(latex_ast, &self.config.latex.macros)?;
+                let latex_html = latex_to_html(&page.content, &self.config.latex.macros)
+                    .with_context(|| format!("Error rendering LaTeX in page {}", page.name))?;
                 let parser = Parser::new_ext(&latex_html, md_opts);
                 html::push_html(&mut out, parser);
                 page.content = out;

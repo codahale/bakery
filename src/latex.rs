@@ -10,14 +10,19 @@ use nom::multi::many_till;
 use nom::sequence::delimited;
 use nom::IResult;
 
+pub fn latex_to_html(s: &str, macros: &HashMap<String, String>) -> Result<String> {
+    let ast = parse_latex(s)?;
+    render_latex(ast, macros)
+}
+
 #[derive(Clone, Debug, PartialEq)]
-pub enum AST {
+enum AST {
     Literal(String),
     InlineEq(String),
     BlockEq(String),
 }
 
-pub fn render_latex(ast: Vec<AST>, macros: &HashMap<String, String>) -> Result<String> {
+fn render_latex(ast: Vec<AST>, macros: &HashMap<String, String>) -> Result<String> {
     let block_opts = Opts::builder()
         .display_mode(true)
         .trust(true)
@@ -45,7 +50,7 @@ pub fn render_latex(ast: Vec<AST>, macros: &HashMap<String, String>) -> Result<S
     Ok(out)
 }
 
-pub fn parse_latex(i: &str) -> Result<Vec<AST>> {
+fn parse_latex(i: &str) -> Result<Vec<AST>> {
     map(
         many_till(
             alt((parse_block_equation, parse_inline_equation, parse_text)),
