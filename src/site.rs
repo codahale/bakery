@@ -228,7 +228,7 @@ struct SiteConfig {
     latex: LatexConfig,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct SassConfig {
     #[serde(default)]
@@ -241,29 +241,11 @@ struct SassConfig {
     load_paths: Vec<PathBuf>,
 }
 
-impl Default for SassConfig {
-    fn default() -> Self {
-        Self {
-            compressed: false,
-            targets: Default::default(),
-            load_paths: Default::default(),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct LatexConfig {
     #[serde(default)]
     macros: HashMap<String, String>,
-}
-
-impl Default for LatexConfig {
-    fn default() -> Self {
-        Self {
-            macros: Default::default(),
-        }
-    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
