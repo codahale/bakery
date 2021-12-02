@@ -66,7 +66,7 @@ impl Site {
 
         let templates = Tera::parse(
             &canonical_dir
-                .join("_templates")
+                .join(TEMPLATES_DIR)
                 .join("**")
                 .join("*")
                 .to_string_lossy(),
@@ -84,10 +84,10 @@ impl Site {
     }
 
     pub fn copy_assets(&self) -> Result<()> {
-        let site_dir = self.dir.join(SITE_SUBDIR);
+        let site_dir = self.dir.join(TARGET_SUBDIR);
         let _ = fs::create_dir(&site_dir);
 
-        let paths = glob::glob(&self.dir.join("[!_]*").to_string_lossy())
+        let paths = glob::glob(&self.dir.join(STATIC_SUBDIR).join("[!_]*").to_string_lossy())
             .with_context(|| format!("Error traversing {:?}", &self.dir))?
             .collect::<std::result::Result<Vec<PathBuf>, glob::GlobError>>()
             .with_context(|| format!("Error traversing {:?}", &self.dir))?;
@@ -100,14 +100,14 @@ impl Site {
     }
 
     pub fn clean_output_dir(&self) -> Result<()> {
-        let _ = fs::remove_dir_all(self.dir.join(SITE_SUBDIR));
+        let _ = fs::remove_dir_all(self.dir.join(TARGET_SUBDIR));
 
         Ok(())
     }
 
     pub fn render_sass(&self) -> Result<()> {
         let sass_dir = self.dir.join(SASS_SUBDIR);
-        let css_dir = self.dir.join(SITE_SUBDIR).join(CSS_SUBDIR);
+        let css_dir = self.dir.join(TARGET_SUBDIR).join(CSS_SUBDIR);
 
         let mut options = grass::Options::default();
         for path in self.config.sass.load_paths.iter() {
@@ -171,9 +171,12 @@ impl Site {
                     .with_context(|| format!("Error rendering page {}", page.name))?;
 
                 let path = if page.name == "index" {
-                    self.dir.join(SITE_SUBDIR).join(INDEX_HTML)
+                    self.dir.join(TARGET_SUBDIR).join(INDEX_HTML)
                 } else {
-                    self.dir.join(SITE_SUBDIR).join(&page.name).join(INDEX_HTML)
+                    self.dir
+                        .join(TARGET_SUBDIR)
+                        .join(&page.name)
+                        .join(INDEX_HTML)
                 };
 
                 util::write_p(path, html)?;
@@ -208,7 +211,7 @@ impl Site {
             .entries(entries)
             .build()
             .to_string();
-        util::write_p(self.dir.join(SITE_SUBDIR).join(FEED_FILENAME), &atom)?;
+        util::write_p(self.dir.join(TARGET_SUBDIR).join(FEED_FILENAME), &atom)?;
 
         Ok(())
     }
@@ -282,9 +285,12 @@ struct Page {
     content: String,
 }
 
-const CONTENT_SUBDIR: &str = "_content";
-const SITE_SUBDIR: &str = "_site";
-const SASS_SUBDIR: &str = "_sass";
+const CONTENT_SUBDIR: &str = "content";
 const CSS_SUBDIR: &str = "css";
+const SASS_SUBDIR: &str = "sass";
+const STATIC_SUBDIR: &str = "static";
+const TARGET_SUBDIR: &str = "target";
+const TEMPLATES_DIR: &str = "templates";
+
 const FEED_FILENAME: &str = "atom.xml";
 const INDEX_HTML: &str = "index.html";
