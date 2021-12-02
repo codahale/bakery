@@ -15,7 +15,6 @@ use tera::{Context as TeraContext, Tera};
 use url::Url;
 
 use crate::latex::{parse_latex, render_latex};
-use crate::util;
 
 #[derive(Debug, Serialize)]
 pub struct Site {
@@ -72,7 +71,7 @@ impl Site {
                 .to_string_lossy(),
         )?;
 
-        let config: SiteConfig = toml::from_str(&fs::read_to_string(dir.join("bakery.toml"))?)?;
+        let config: SiteConfig = toml::from_str(&fs::read_to_string(dir.join(CONFIG_FILENAME))?)?;
         let site = Site {
             pages,
             templates,
@@ -131,7 +130,7 @@ impl Site {
                 let css = grass::from_path(sass_path.to_string_lossy().as_ref(), &options)
                     .map_err(|e| anyhow::Error::msg(e.to_string()))?;
 
-                util::write_p(&css_path, css)?;
+                write_p(&css_path, css)?;
 
                 Ok(())
             })
@@ -179,7 +178,7 @@ impl Site {
                         .join(INDEX_HTML)
                 };
 
-                util::write_p(path, html)?;
+                write_p(path, html)?;
 
                 Ok(())
             })
@@ -211,7 +210,7 @@ impl Site {
             .entries(entries)
             .build()
             .to_string();
-        util::write_p(self.dir.join(TARGET_SUBDIR).join(FEED_FILENAME), &atom)?;
+        write_p(self.dir.join(TARGET_SUBDIR).join(FEED_FILENAME), &atom)?;
 
         Ok(())
     }
@@ -285,6 +284,18 @@ struct Page {
     content: String,
 }
 
+fn write_p<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) -> Result<()> {
+    if let Some(parent) = path.as_ref().parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Error creating directory {:?}", &parent))?;
+    }
+
+    fs::write(&path, contents)
+        .with_context(|| format!("Error creating file {:?}", path.as_ref()))?;
+
+    Ok(())
+}
+
 const CONTENT_SUBDIR: &str = "content";
 const CSS_SUBDIR: &str = "css";
 const SASS_SUBDIR: &str = "sass";
@@ -292,5 +303,6 @@ const STATIC_SUBDIR: &str = "static";
 const TARGET_SUBDIR: &str = "target";
 const TEMPLATES_DIR: &str = "templates";
 
+const CONFIG_FILENAME: &str = "bakery.toml";
 const FEED_FILENAME: &str = "atom.xml";
 const INDEX_HTML: &str = "index.html";
