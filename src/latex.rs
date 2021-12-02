@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::{anyhow, Context, Result};
 use katex::Opts;
 use nom::branch::alt;
@@ -7,7 +9,6 @@ use nom::combinator::{eof, map, peek};
 use nom::multi::many_till;
 use nom::sequence::delimited;
 use nom::IResult;
-use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AST {
