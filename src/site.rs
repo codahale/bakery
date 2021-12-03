@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -29,9 +30,10 @@ pub struct Site {
 }
 
 impl Site {
-    pub fn load(dir: &Path) -> Result<Site> {
+    pub fn load<P: AsRef<Path> + Debug>(dir: P, enable_drafts: bool) -> Result<Site> {
         let matter = Matter::<engine::TOML>::new();
         let canonical_dir = dir
+            .as_ref()
             .canonicalize()
             .with_context(|| format!("Failed to find site directory: {:?}", dir))?;
 
@@ -62,6 +64,9 @@ impl Site {
                     .with_context(|| format!("Invalid front matter in {:?}", path))?;
                 page.content = file.content;
                 page.excerpt = file.excerpt;
+                if enable_drafts {
+                    page.draft = false;
+                }
                 let mut page_name = path.strip_prefix(&content_dir).unwrap().to_path_buf();
                 page_name.set_extension("");
                 page.name = page_name.to_string_lossy().to_string();
@@ -78,7 +83,8 @@ impl Site {
                 .as_ref(),
         )?;
 
-        let config: SiteConfig = toml::from_str(&fs::read_to_string(dir.join(CONFIG_FILENAME))?)?;
+        let config: SiteConfig =
+            toml::from_str(&fs::read_to_string(dir.as_ref().join(CONFIG_FILENAME))?)?;
         let site = Site {
             pages,
             templates,
@@ -261,6 +267,9 @@ struct Page {
     description: String,
     template: String,
     date: Option<DateTime<Utc>>,
+
+    #[serde(default)]
+    draft: bool,
 
     #[serde(skip_deserializing)]
     excerpt: Option<String>,
