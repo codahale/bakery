@@ -242,22 +242,16 @@ struct SiteConfig {
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, default)]
 struct SassConfig {
-    #[serde(default)]
     compressed: bool,
-
-    #[serde(default)]
     targets: HashMap<PathBuf, PathBuf>,
-
-    #[serde(default)]
     load_paths: Vec<PathBuf>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, default)]
 struct LatexConfig {
-    #[serde(default)]
     macros: HashMap<String, String>,
 }
 
