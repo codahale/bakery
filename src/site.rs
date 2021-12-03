@@ -36,10 +36,16 @@ impl Site {
             .with_context(|| format!("Failed to find site directory: {:?}", dir))?;
 
         let content_dir = canonical_dir.join(CONTENT_SUBDIR);
-        let paths = glob::glob(&content_dir.join("**").join("*.md").to_string_lossy())
-            .with_context(|| format!("Failed to find content directory: {:?}", &content_dir))?
-            .filter_map(Result::ok)
-            .collect::<Vec<PathBuf>>();
+        let paths = glob::glob(
+            content_dir
+                .join("**")
+                .join("*.md")
+                .to_string_lossy()
+                .as_ref(),
+        )
+        .with_context(|| format!("Failed to find content directory: {:?}", &content_dir))?
+        .filter_map(Result::ok)
+        .collect::<Vec<PathBuf>>();
 
         let pages = paths
             .par_iter()
@@ -64,11 +70,12 @@ impl Site {
             .collect::<Result<Vec<Page>>>()?;
 
         let templates = Tera::parse(
-            &canonical_dir
+            canonical_dir
                 .join(TEMPLATES_DIR)
                 .join("**")
                 .join("*")
-                .to_string_lossy(),
+                .to_string_lossy()
+                .as_ref(),
         )?;
 
         let config: SiteConfig = toml::from_str(&fs::read_to_string(dir.join(CONFIG_FILENAME))?)?;
@@ -86,10 +93,16 @@ impl Site {
         let site_dir = self.dir.join(TARGET_SUBDIR);
         let _ = fs::create_dir(&site_dir);
 
-        let paths = glob::glob(&self.dir.join(STATIC_SUBDIR).join("[!_]*").to_string_lossy())
-            .with_context(|| format!("Error traversing {:?}", &self.dir))?
-            .collect::<std::result::Result<Vec<PathBuf>, glob::GlobError>>()
-            .with_context(|| format!("Error traversing {:?}", &self.dir))?;
+        let paths = glob::glob(
+            self.dir
+                .join(STATIC_SUBDIR)
+                .join("[!_]*")
+                .to_string_lossy()
+                .as_ref(),
+        )
+        .with_context(|| format!("Error traversing {:?}", &self.dir))?
+        .collect::<std::result::Result<Vec<PathBuf>, glob::GlobError>>()
+        .with_context(|| format!("Error traversing {:?}", &self.dir))?;
 
         let options = &CopyOptions::new();
         fs_extra::copy_items(&paths, &site_dir, options)
