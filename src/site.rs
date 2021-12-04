@@ -2,16 +2,13 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
-use std::time::Duration;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use atom_syndication::{ContentBuilder, Entry, EntryBuilder, FeedBuilder, Text};
 use chrono::{DateTime, Utc};
 use fs_extra::dir::CopyOptions;
 use grass::OutputStyle;
 use gray_matter::{engine, Matter};
-use notify::{DebouncedEvent, RecursiveMode, Watcher};
 use pulldown_cmark::{html, Options, Parser};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -29,10 +26,10 @@ pub struct Site {
     templates: Tera,
 
     #[serde(skip_serializing)]
-    pub dir: PathBuf,
+    dir: PathBuf,
 
     #[serde(skip_serializing)]
-    pub target_dir: PathBuf,
+    target_dir: PathBuf,
 }
 
 impl Site {
@@ -110,38 +107,6 @@ impl Site {
         self.render_feed()
     }
 
-    pub fn watch(&mut self) -> Result<()> {
-        let (tx, rx) = mpsc::channel();
-
-        let mut watcher = notify::watcher(tx, Duration::from_secs(1))?;
-        watcher.watch(&self.dir, RecursiveMode::Recursive)?;
-
-        loop {
-            match rx.recv() {
-                Ok(event) => match event {
-                    DebouncedEvent::Rename(_, path)
-                    | DebouncedEvent::Create(path)
-                    | DebouncedEvent::Write(path)
-                    | DebouncedEvent::Remove(path)
-                    | DebouncedEvent::Chmod(path) => {
-                        if !path.starts_with(&self.target_dir)
-                            && !path
-                                .extension()
-                                .and_then(|s| s.to_str())
-                                .map(|s| s.ends_with('~'))
-                                .unwrap_or(false)
-                        {
-                            println!("{:?} changed, re-building site", path);
-                            self.build()?;
-                        }
-                    }
-                    _ => {}
-                },
-                Err(e) => bail!("watch error: {:?}", e),
-            }
-        }
-    }
-
     fn copy_assets(&self) -> Result<()> {
         let _ = fs::create_dir(&self.target_dir);
 
@@ -213,7 +178,7 @@ impl Site {
                     .with_context(|| format!("Error rendering LaTeX in page {}", page.name))?;
                 let parser = Parser::new_ext(&latex_html, md_opts);
                 html::push_html(&mut out, parser);
-                page.html = out;
+                page.content = out;
 
                 Ok(())
             })
@@ -257,7 +222,11 @@ impl Site {
             .map(|page| {
                 EntryBuilder::default()
                     .id(&page.name)
-                    .content(ContentBuilder::default().value(page.html.clone()).build())
+                    .content(
+                        ContentBuilder::default()
+                            .value(page.content.clone())
+                            .build(),
+                    )
                     .title(Text::plain(&page.title))
                     .updated(page.date.unwrap())
                     .build()
@@ -319,11 +288,8 @@ struct Page {
     #[serde(skip_deserializing)]
     name: String,
 
-    #[serde(skip)]
-    content: String,
-
     #[serde(skip_deserializing)]
-    html: String,
+    content: String,
 }
 
 fn write_p<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) -> Result<()> {
