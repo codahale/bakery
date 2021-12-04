@@ -27,17 +27,20 @@ pub struct Site {
 
     #[serde(skip_serializing)]
     dir: PathBuf,
+
+    #[serde(skip_serializing)]
+    target_dir: PathBuf,
 }
 
 impl Site {
     pub fn load<P: AsRef<Path> + Debug>(dir: P, enable_drafts: bool) -> Result<Site> {
         let matter = Matter::<engine::TOML>::new();
-        let canonical_dir = dir
+        let dir = dir
             .as_ref()
             .canonicalize()
             .with_context(|| format!("Failed to find site directory: {:?}", dir))?;
 
-        let content_dir = canonical_dir.join(CONTENT_SUBDIR);
+        let content_dir = dir.join(CONTENT_SUBDIR);
         let paths = glob::glob(
             content_dir
                 .join("**")
@@ -75,21 +78,21 @@ impl Site {
             .collect::<Result<Vec<Page>>>()?;
 
         let templates = Tera::parse(
-            canonical_dir
-                .join(TEMPLATES_DIR)
+            dir.join(TEMPLATES_DIR)
                 .join("**")
                 .join("*")
                 .to_string_lossy()
                 .as_ref(),
         )?;
 
-        let config: SiteConfig =
-            toml::from_str(&fs::read_to_string(dir.as_ref().join(CONFIG_FILENAME))?)?;
+        let config: SiteConfig = toml::from_str(&fs::read_to_string(dir.join(CONFIG_FILENAME))?)?;
+        let target_dir = dir.join(TARGET_SUBDIR);
         let site = Site {
             pages,
             templates,
             config,
-            dir: canonical_dir,
+            dir,
+            target_dir,
         };
 
         Ok(site)
@@ -105,8 +108,7 @@ impl Site {
     }
 
     fn copy_assets(&self) -> Result<()> {
-        let site_dir = self.dir.join(TARGET_SUBDIR);
-        let _ = fs::create_dir(&site_dir);
+        let _ = fs::create_dir(&self.target_dir);
 
         let paths = glob::glob(
             self.dir
@@ -120,21 +122,21 @@ impl Site {
         .with_context(|| format!("Error traversing {:?}", &self.dir))?;
 
         let options = &CopyOptions::new();
-        fs_extra::copy_items(&paths, &site_dir, options)
+        fs_extra::copy_items(&paths, &self.target_dir, options)
             .with_context(|| format!("Error copying assets: {:?}", paths))?;
 
         Ok(())
     }
 
     fn clean_output_dir(&self) -> Result<()> {
-        let _ = fs::remove_dir_all(self.dir.join(TARGET_SUBDIR));
+        let _ = fs::remove_dir_all(&self.target_dir);
 
         Ok(())
     }
 
     fn render_sass(&self) -> Result<()> {
         let sass_dir = self.dir.join(SASS_SUBDIR);
-        let css_dir = self.dir.join(TARGET_SUBDIR).join(CSS_SUBDIR);
+        let css_dir = self.target_dir.join(CSS_SUBDIR);
 
         let mut options = grass::Options::default();
         for path in self.config.sass.load_paths.iter() {
