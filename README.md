@@ -10,5 +10,5 @@ find . -type d -name target -prune -o -print | entr bakery .
 
 ```shell
 npm install -g browser-sync
-cd target && browser-sync start -s -w --port 8080
+browser-sync start --server ./target --watch --port 8080
 ```
