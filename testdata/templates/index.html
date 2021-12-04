@@ -6,7 +6,7 @@
     <title>{{ title }}</title>
 </head>
 <body>
-    {{ content | safe }}
+    {{ html | safe }}
 
     <ul>
     {%- for page in site.pages | filter(attribute="date") | sort(attribute="date") | reverse %}
