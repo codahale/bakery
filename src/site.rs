@@ -95,7 +95,16 @@ impl Site {
         Ok(site)
     }
 
-    pub fn copy_assets(&self) -> Result<()> {
+    pub fn build(&mut self) -> Result<()> {
+        self.clean_output_dir()?;
+        self.render_sass()?;
+        self.copy_assets()?;
+        self.render_content()?;
+        self.render_html()?;
+        self.render_feed()
+    }
+
+    fn copy_assets(&self) -> Result<()> {
         let site_dir = self.dir.join(TARGET_SUBDIR);
         let _ = fs::create_dir(&site_dir);
 
@@ -117,13 +126,13 @@ impl Site {
         Ok(())
     }
 
-    pub fn clean_output_dir(&self) -> Result<()> {
+    fn clean_output_dir(&self) -> Result<()> {
         let _ = fs::remove_dir_all(self.dir.join(TARGET_SUBDIR));
 
         Ok(())
     }
 
-    pub fn render_sass(&self) -> Result<()> {
+    fn render_sass(&self) -> Result<()> {
         let sass_dir = self.dir.join(SASS_SUBDIR);
         let css_dir = self.dir.join(TARGET_SUBDIR).join(CSS_SUBDIR);
 
@@ -156,7 +165,7 @@ impl Site {
             .collect::<Result<()>>()
     }
 
-    pub fn render_content(&mut self) -> Result<()> {
+    fn render_content(&mut self) -> Result<()> {
         let md_opts = Options::all();
 
         self.pages
@@ -174,7 +183,7 @@ impl Site {
             .collect()
     }
 
-    pub fn render_html(&mut self) -> Result<()> {
+    fn render_html(&mut self) -> Result<()> {
         self.pages
             .par_iter()
             .map(|page| {
@@ -203,7 +212,7 @@ impl Site {
             .collect()
     }
 
-    pub fn render_feed(&self) -> Result<()> {
+    fn render_feed(&self) -> Result<()> {
         let entries: Vec<Entry> = self
             .pages
             .iter()
