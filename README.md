@@ -1,6 +1,14 @@
 # bakery
 
-## TODO
+## Building on file changes
 
-- watch mode
-- serve mode
+```shell
+find . -type d -name target -prune -o -print | entr bakery .
+```
+
+## Previewing site with live reload
+
+```shell
+npm install -g browser-sync
+cd target && browser-sync start -s -w --port 8080
+```
