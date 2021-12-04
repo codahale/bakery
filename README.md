@@ -3,6 +3,7 @@
 ## Building on file changes
 
 ```shell
+brew install entr
 find . -type d -name target -prune -o -print | entr bakery .
 ```
 
