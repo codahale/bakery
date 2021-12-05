@@ -13,7 +13,7 @@ Oh good! This is an inline doohicky: \\(N=100\\).
 
 $$
 \begin{matrix}
-a & b \\
+a & b \\\\
 c & d
 \end{matrix}
 $$

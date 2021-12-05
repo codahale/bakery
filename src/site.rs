@@ -15,8 +15,6 @@ use serde::{Deserialize, Serialize};
 use tera::{Context as TeraContext, Tera};
 use url::Url;
 
-use crate::latex::latex_to_html;
-
 #[derive(Debug, Serialize)]
 pub struct Site {
     pages: Vec<Page>,
@@ -174,9 +172,7 @@ impl Site {
             .par_iter_mut()
             .map(|page| {
                 let mut out = String::with_capacity(page.content.len() * 2);
-                let latex_html = latex_to_html(&page.content, &self.config.latex.macros)
-                    .with_context(|| format!("Error rendering LaTeX in page {}", page.name))?;
-                let parser = Parser::new_ext(&latex_html, md_opts);
+                let parser = Parser::new_ext(&page.content, md_opts);
                 html::push_html(&mut out, parser);
                 page.content = out;
 
@@ -253,9 +249,6 @@ struct SiteConfig {
 
     #[serde(default, skip_serializing)]
     sass: SassConfig,
-
-    #[serde(default, skip_serializing)]
-    latex: LatexConfig,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -264,12 +257,6 @@ struct SassConfig {
     compressed: bool,
     targets: HashMap<PathBuf, PathBuf>,
     load_paths: Vec<PathBuf>,
-}
-
-#[derive(Debug, Default, Deserialize, Serialize)]
-#[serde(deny_unknown_fields, default)]
-struct LatexConfig {
-    macros: HashMap<String, String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

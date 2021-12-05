@@ -6,7 +6,6 @@ use clap::{crate_description, crate_name, crate_version, AppSettings, Parser, Va
 
 use crate::site::Site;
 
-mod latex;
 mod site;
 
 fn main() -> Result<()> {
