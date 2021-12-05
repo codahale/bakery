@@ -1,10 +1,15 @@
 # bakery
 
+## Building site
+
+```shell
+bakery ./site
+```
+
 ## Building on file changes
 
 ```shell
-brew install entr
-find . -type d -name target -prune -o -print | entr bakery .
+bakery ./site --watch
 ```
 
 ## Previewing site with live reload

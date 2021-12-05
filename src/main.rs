@@ -10,10 +10,14 @@ mod site;
 
 fn main() -> Result<()> {
     let opts: Opts = Opts::parse();
-    let mut site = Site::load(&opts.dir, opts.drafts).expect("error loading site");
-    print!("Building {}...", &opts.dir.to_string_lossy());
-    site.build()?;
-    println!("OK!");
+
+    println!("Building site...");
+    Site::build(&opts.dir, opts.drafts)?;
+
+    if opts.watch {
+        println!("Watching for changes...");
+        Site::watch(&opts.dir, opts.drafts)?;
+    }
 
     Ok(())
 }
@@ -27,4 +31,7 @@ struct Opts {
 
     #[clap(long, about = "Include draft pages")]
     drafts: bool,
+
+    #[clap(long, about = "Watch for changed files and rebuild")]
+    watch: bool,
 }

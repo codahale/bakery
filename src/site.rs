@@ -2,13 +2,16 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use atom_syndication::{ContentBuilder, Entry, EntryBuilder, FeedBuilder, Text};
 use chrono::{DateTime, Utc};
 use fs_extra::dir::CopyOptions;
 use grass::OutputStyle;
 use gray_matter::{engine, Matter};
+use notify::{DebouncedEvent, RecursiveMode, Watcher};
 use pulldown_cmark::{html, Options, Parser};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -31,7 +34,7 @@ pub struct Site {
 }
 
 impl Site {
-    pub fn load<P: AsRef<Path> + Debug>(dir: P, enable_drafts: bool) -> Result<Site> {
+    pub fn build<P: AsRef<Path> + Debug>(dir: P, enable_drafts: bool) -> Result<()> {
         let matter = Matter::<engine::TOML>::new();
         let dir = dir
             .as_ref()
@@ -85,7 +88,7 @@ impl Site {
 
         let config: SiteConfig = toml::from_str(&fs::read_to_string(dir.join(CONFIG_FILENAME))?)?;
         let target_dir = dir.join(TARGET_SUBDIR);
-        let site = Site {
+        let mut site = Site {
             pages,
             templates,
             config,
@@ -93,16 +96,43 @@ impl Site {
             target_dir,
         };
 
-        Ok(site)
+        site.clean_output_dir()?;
+        site.render_sass()?;
+        site.copy_assets()?;
+        site.render_content()?;
+        site.render_html()?;
+        site.render_feed()
     }
 
-    pub fn build(&mut self) -> Result<()> {
-        self.clean_output_dir()?;
-        self.render_sass()?;
-        self.copy_assets()?;
-        self.render_content()?;
-        self.render_html()?;
-        self.render_feed()
+    pub fn watch<P: AsRef<Path> + Debug>(dir: P, enable_drafts: bool) -> Result<()> {
+        let (tx, rx) = mpsc::channel();
+        let mut watcher = notify::watcher(tx, Duration::from_secs(1))?;
+        watcher.watch(&dir, RecursiveMode::Recursive)?;
+        let target_dir = dir.as_ref().canonicalize()?.join(TARGET_SUBDIR);
+        loop {
+            match rx.recv() {
+                Ok(event) => match event {
+                    DebouncedEvent::NoticeWrite(path)
+                    | DebouncedEvent::NoticeRemove(path)
+                    | DebouncedEvent::Create(path)
+                    | DebouncedEvent::Write(path)
+                    | DebouncedEvent::Remove(path)
+                    | DebouncedEvent::Rename(path, _) => {
+                        if !path
+                            .extension()
+                            .map(|s| s.to_string_lossy().ends_with('~'))
+                            .unwrap_or(false)
+                            && !path.starts_with(&target_dir)
+                        {
+                            println!("Rebuilding site...");
+                            Site::build(&dir, enable_drafts)?;
+                        }
+                    }
+                    _ => {}
+                },
+                Err(e) => bail!(e),
+            }
+        }
     }
 
     fn copy_assets(&self) -> Result<()> {
