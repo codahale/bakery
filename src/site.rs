@@ -203,7 +203,11 @@ impl Site {
         let md_opts = Options::all();
         let ss = SyntaxSet::load_defaults_newlines();
         let themes = ThemeSet::load_defaults();
-        let theme = &themes.themes["InspiredGitHub"];
+        let theme = themes
+            .themes
+            .get(&self.config.theme)
+            .ok_or_else(|| anyhow!("Invalid syntax theme: {:?}", &self.config.theme))?;
+
         let inline_opts = Opts::builder().display_mode(false).build()?;
         let block_opts = Opts::builder().display_mode(true).build()?;
 
@@ -330,8 +334,15 @@ struct SiteConfig {
     base_url: Url,
     title: String,
 
+    #[serde(default = "default_theme")]
+    theme: String,
+
     #[serde(default, skip_serializing)]
     sass: SassConfig,
+}
+
+fn default_theme() -> String {
+    "InspiredGitHub".into()
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
