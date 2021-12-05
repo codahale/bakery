@@ -13,7 +13,7 @@ use grass::OutputStyle;
 use gray_matter::{engine, Matter};
 use katex::Opts;
 use notify::{DebouncedEvent, RecursiveMode, Watcher};
-use pulldown_cmark::{html, CodeBlockKind, Event, Options, Parser, Tag};
+use pulldown_cmark::{escape, html, CodeBlockKind, Event, Options, Parser, Tag};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use syntect::highlighting::ThemeSet;
@@ -229,29 +229,27 @@ impl Site {
                         }
                         Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(kind))) => {
                             fence_kind = Some(kind.to_string());
-                            Ok(Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(kind))))
+                            Ok(Event::Text("".into()))
                         }
-                        Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(kind))) => {
+                        Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(_))) => {
                             fence_kind = None;
-                            Ok(Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(kind))))
+                            Ok(Event::Text("".into()))
                         }
                         Event::Text(s) => {
                             if let Some(kind) = &fence_kind {
-                                if kind.is_empty() {
-                                    if s.starts_with("$$\n") && s.ends_with("$$\n") {
-                                        let html = katex::render_with_opts(
-                                            &s[3..s.len() - 3],
-                                            &block_opts,
-                                        )?;
-                                        Ok(Event::Html(html.into()))
-                                    } else {
-                                        Ok(Event::Text(s))
-                                    }
+                                if kind.is_empty() && s.starts_with("$$\n") && s.ends_with("$$\n") {
+                                    let html =
+                                        katex::render_with_opts(&s[3..s.len() - 3], &block_opts)?;
+                                    Ok(Event::Html(html.into()))
                                 } else if let Some(syntax) = ss.find_syntax_by_token(kind) {
                                     let html = highlighted_html_for_string(&s, &ss, syntax, theme);
                                     Ok(Event::Html(html.into()))
                                 } else {
-                                    Ok(Event::Text(s))
+                                    let mut html = String::with_capacity(s.len());
+                                    html.push_str("<pre><code>");
+                                    escape::escape_html(&mut html, &s)?;
+                                    html.push_str("</code></pre>");
+                                    Ok(Event::Html(html.into()))
                                 }
                             } else {
                                 Ok(Event::Text(s))
