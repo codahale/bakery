@@ -6,12 +6,6 @@
     <link href="//codahale.com/atom.xml" rel="alternate" title="Atom" type="application/atom+xml"/>
     <link rel="stylesheet" href="/css/codahale.css"/>
     <link rel="icon" href="/img/favicon-32x32.png" type="image/png" sizes="32x32">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.15.1/dist/katex.min.css" integrity="sha384-R4558gYOUz8mP9YWpZJjofhk+zx0AS11p36HnD2ZKj/6JR5z27gSSULCNHIRReVs" crossorigin="anonymous">
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.15.1/dist/katex.min.js" integrity="sha384-z1fJDqw8ZApjGO3/unPWUPsIymfsJmyrDVWC8Tv/a1HeOtGmkwNd/7xUS0Xcnvsx" crossorigin="anonymous"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.15.1/dist/contrib/auto-render.min.js" integrity="sha384-+XBljXPPiv+OzfbB3cVmLHf4hdUFHlWNZN5spNQ7rmHTXpd7WvJum6fIACpNNfIR" crossorigin="anonymous"
-            onload="renderMathInElement(document.body);"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.3.1/build/styles/default.min.css" integrity="sha384-bVi32MzPMHhQQoX43XwbzyE2I2YlQETXzSzS0rnURpcv/pkxtPnZ8QpbAN9AzEu5" crossorigin="anonymous">
-    <script defer src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.3.1/build/highlight.min.js" integrity="sha384-zDX/4RkDnpVxZkjJjxdzDsT1Kk2XThh7u47fXdgZ1W8AMjb//F4ZK4G4y7oNVHM1" crossorigin="anonymous" onload="hljs.highlightAll();"></script>
     <title>{{ title }} | codahale.com</title>
 </head>
 <body>
@@ -43,8 +37,7 @@
     <footer class="footer">
         <small>
             &copy;
-            2009-
-            <time datetime="{{ now() }}">{{ now() | date(format="%Y") }}</time>
+            2009-<time datetime="{{ now() }}">{{ now() | date(format="%Y") }}</time>
             Coda Hale
         </small>
     </footer>

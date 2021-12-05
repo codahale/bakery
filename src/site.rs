@@ -11,10 +11,14 @@ use chrono::{DateTime, Utc};
 use fs_extra::dir::CopyOptions;
 use grass::OutputStyle;
 use gray_matter::{engine, Matter};
+use katex::Opts;
 use notify::{DebouncedEvent, RecursiveMode, Watcher};
-use pulldown_cmark::{html, Options, Parser};
+use pulldown_cmark::{html, CodeBlockKind, Event, Options, Parser, Tag};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use syntect::highlighting::ThemeSet;
+use syntect::html::highlighted_html_for_string;
+use syntect::parsing::SyntaxSet;
 use tera::{Context as TeraContext, Tera};
 use url::Url;
 
@@ -197,13 +201,62 @@ impl Site {
 
     fn render_content(&mut self) -> Result<()> {
         let md_opts = Options::all();
+        let ss = SyntaxSet::load_defaults_newlines();
+        let themes = ThemeSet::load_defaults();
+        let theme = &themes.themes["InspiredGitHub"];
+        let inline_opts = Opts::builder().display_mode(false).build()?;
+        let block_opts = Opts::builder().display_mode(true).build()?;
 
         self.pages
             .par_iter_mut()
             .map(|page| {
                 let mut out = String::with_capacity(page.content.len() * 2);
-                let parser = Parser::new_ext(&page.content, md_opts);
-                html::push_html(&mut out, parser);
+                let mut fence_kind: Option<String> = None;
+                let events = Parser::new_ext(&page.content, md_opts)
+                    .map(|e| match e {
+                        Event::Code(s) => {
+                            if s.starts_with('$') && s.ends_with('$') {
+                                let html =
+                                    katex::render_with_opts(&s[1..s.len() - 1], &inline_opts)?;
+                                Ok(Event::Html(html.into()))
+                            } else {
+                                Ok(Event::Code(s))
+                            }
+                        }
+                        Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(kind))) => {
+                            fence_kind = Some(kind.to_string());
+                            Ok(Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(kind))))
+                        }
+                        Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(kind))) => {
+                            fence_kind = None;
+                            Ok(Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(kind))))
+                        }
+                        Event::Text(s) => {
+                            if let Some(kind) = &fence_kind {
+                                if kind.is_empty() {
+                                    if s.starts_with("$$\n") && s.ends_with("$$\n") {
+                                        let html = katex::render_with_opts(
+                                            &s[3..s.len() - 3],
+                                            &block_opts,
+                                        )?;
+                                        Ok(Event::Html(html.into()))
+                                    } else {
+                                        Ok(Event::Text(s))
+                                    }
+                                } else if let Some(syntax) = ss.find_syntax_by_token(kind) {
+                                    let html = highlighted_html_for_string(&s, &ss, syntax, theme);
+                                    Ok(Event::Html(html.into()))
+                                } else {
+                                    Ok(Event::Text(s))
+                                }
+                            } else {
+                                Ok(Event::Text(s))
+                            }
+                        }
+                        e => Ok(e),
+                    })
+                    .collect::<Result<Vec<Event>>>()?;
+                html::push_html(&mut out, events.into_iter());
                 page.content = out;
 
                 Ok(())
