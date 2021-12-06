@@ -282,7 +282,7 @@ impl Site {
     }
 
     fn render_html(&mut self) -> Result<()> {
-        let templates = Tera::parse(
+        let templates = Tera::new(
             self.dir
                 .join(TEMPLATES_DIR)
                 .join("**")
