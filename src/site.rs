@@ -170,16 +170,15 @@ impl Site {
         let sass_dir = self.dir.join(SASS_SUBDIR);
         let css_dir = self.target_dir.join(CSS_SUBDIR);
 
-        let mut options = grass::Options::default();
-        for path in self.config.sass.load_paths.iter() {
-            options = options.load_path(path);
-        }
-
-        options = options.style(if self.config.sass.compressed {
+        let mut options = grass::Options::default().style(if self.config.sass.compressed {
             OutputStyle::Compressed
         } else {
             OutputStyle::Expanded
         });
+
+        for path in self.config.sass.load_paths.iter() {
+            options = options.load_path(path);
+        }
 
         self.config
             .sass
@@ -220,31 +219,54 @@ impl Site {
                     .map(|e| match e {
                         Event::Code(s) => {
                             if s.starts_with('$') && s.ends_with('$') {
-                                let html =
-                                    katex::render_with_opts(&s[1..s.len() - 1], &inline_opts)?;
-                                Ok(Event::Html(html.into()))
+                                // Convert inline LaTeX blocks (e.g. `$N+1`) to HTML.
+                                Ok(Event::Html(
+                                    katex::render_with_opts(&s[1..s.len() - 1], &inline_opts)?
+                                        .into(),
+                                ))
                             } else {
+                                // Pass regular inline code blocks on to the formatter.
                                 Ok(Event::Code(s))
                             }
                         }
                         Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(kind))) => {
-                            fence_kind = Some(kind.to_string());
-                            Ok(Event::Text("".into()))
+                            // If the fenced code block doesn't have a kind, pass it on directly.
+                            if kind.is_empty() {
+                                Ok(Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(kind))))
+                            } else {
+                                // Otherwise, record the fenced block kind, but don't pass the start
+                                // on to the formatter. We'll handle our own <pre><code> blocking.
+                                fence_kind = Some(kind.to_string());
+                                Ok(Event::Text("".into()))
+                            }
                         }
-                        Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(_))) => {
-                            fence_kind = None;
-                            Ok(Event::Text("".into()))
+                        Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(kind))) => {
+                            // If the fenced code block doesn't have a kind, pass it on directly.
+                            if fence_kind.is_none() {
+                                Ok(Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(kind))))
+                            } else {
+                                // Reset the fenced block kind. Again, don't pass the end on to the
+                                // formatter.
+                                fence_kind = None;
+                                Ok(Event::Text("".into()))
+                            }
                         }
                         Event::Text(s) => {
+                            // If we've previously recorded a code block fence kind, then this text
+                            // is the contents of a fenced code block with a specified kind.
                             if let Some(kind) = &fence_kind {
-                                if kind.is_empty() && s.starts_with("$$\n") && s.ends_with("$$\n") {
-                                    let html =
-                                        katex::render_with_opts(&s[3..s.len() - 3], &block_opts)?;
+                                if kind.as_str() == "latex" {
+                                    // Render LaTeX as HTML using KaTeX.
+                                    let html = katex::render_with_opts(&s, &block_opts)?;
                                     Ok(Event::Html(html.into()))
                                 } else if let Some(syntax) = ss.find_syntax_by_token(kind) {
+                                    // If we can find a Syntect syntax for the given kind, format it
+                                    // as syntax highlighted HTML.
                                     let html = highlighted_html_for_string(&s, &ss, syntax, theme);
                                     Ok(Event::Html(html.into()))
                                 } else {
+                                    // If we don't know what kind this code is, just escape it and
+                                    // slap it in a <pre><code> block.
                                     let mut html = String::with_capacity(s.len());
                                     html.push_str("<pre><code>");
                                     escape::escape_html(&mut html, &s)?;
@@ -252,12 +274,17 @@ impl Site {
                                     Ok(Event::Html(html.into()))
                                 }
                             } else {
+                                // If we're not in a fenced code block, just pass the text on.
                                 Ok(Event::Text(s))
                             }
                         }
+                        // Pass all other events on untouched.
                         e => Ok(e),
                     })
+                    // Convert to a vec of events and return the first error, if any.
                     .collect::<Result<Vec<Event>>>()?;
+
+                // Render as HTML.
                 html::push_html(&mut out, events.into_iter());
                 page.content = out;
 

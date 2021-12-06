@@ -11,21 +11,17 @@ template = "page.html"
 
 Oh good! This is an inline doohicky: `$N=100$`.
 
-```
-$$
+```latex
 \begin{matrix}
 a & b \\\\
 c & d
 \end{matrix}
-$$
 ```
 
 ---
 
-```
-$$
+```latex
 X(N) = \dfrac{\lambda N}{1+\sigma(N-1)+\kappa N(N-1)}
-$$
 ```
 
 * `$\sigma$`, the overhead of contention

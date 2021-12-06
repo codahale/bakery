@@ -8,13 +8,11 @@ template = "index.html"
 
 Beep boop, I have $5. You have $4. In the meantime, I have `$N=1\dot a \times \rho$`.
 
-```
-$$
+```latex
 \begin{matrix}
 a & b \\
 c & d
 \end{matrix}
-$$
 ```
 
 ```
