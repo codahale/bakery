@@ -28,9 +28,6 @@ pub struct Site {
     config: SiteConfig,
 
     #[serde(skip_serializing)]
-    templates: Tera,
-
-    #[serde(skip_serializing)]
     dir: PathBuf,
 
     #[serde(skip_serializing)]
@@ -82,19 +79,10 @@ impl Site {
             })
             .collect::<Result<Vec<Page>>>()?;
 
-        let templates = Tera::parse(
-            dir.join(TEMPLATES_DIR)
-                .join("**")
-                .join("*")
-                .to_string_lossy()
-                .as_ref(),
-        )?;
-
         let config: SiteConfig = toml::from_str(&fs::read_to_string(dir.join(CONFIG_FILENAME))?)?;
         let target_dir = dir.join(TARGET_SUBDIR);
         let mut site = Site {
             pages,
-            templates,
             config,
             dir,
             target_dir,
@@ -294,6 +282,14 @@ impl Site {
     }
 
     fn render_html(&mut self) -> Result<()> {
+        let templates = Tera::parse(
+            self.dir
+                .join(TEMPLATES_DIR)
+                .join("**")
+                .join("*")
+                .to_string_lossy()
+                .as_ref(),
+        )?;
         self.pages
             .par_iter()
             .map(|page| {
@@ -301,8 +297,7 @@ impl Site {
                     .with_context(|| format!("Error rendering page {}", page.name))?;
                 context.insert("site", &self);
 
-                let html = self
-                    .templates
+                let html = templates
                     .render(&page.template, &context)
                     .with_context(|| format!("Error rendering page {}", page.name))?;
 
