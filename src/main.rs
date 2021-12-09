@@ -1,8 +1,7 @@
-use std::env;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use clap::{crate_description, crate_name, crate_version, AppSettings, Parser, ValueHint};
+use clap::{Parser, ValueHint};
 
 use crate::site::Site;
 
@@ -22,16 +21,20 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+/// Build a dang website, I guess.
+#[deny(missing_docs)]
 #[derive(Debug, Parser)]
-#[clap(bin_name = crate_name!(), about = crate_description!(), version = crate_version!())]
-#[clap(setting = AppSettings::HelpRequired)]
+#[clap(about, version, author)]
 struct Opts {
-    #[clap(about = "The site directory", value_hint = ValueHint::DirPath)]
+    /// The site directory.
+    #[clap(value_hint = ValueHint::DirPath)]
     dir: PathBuf,
 
-    #[clap(long, about = "Include draft pages")]
+    /// Include draft pages.
+    #[clap(long)]
     drafts: bool,
 
-    #[clap(long, about = "Watch for changed files and rebuild")]
+    /// Watch for changed files and rebuild.
+    #[clap(long)]
     watch: bool,
 }
