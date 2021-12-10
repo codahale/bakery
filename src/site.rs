@@ -203,40 +203,39 @@ impl Site {
             .map(|page| {
                 let mut out = String::with_capacity(page.content.len() * 2);
                 let mut fence_kind: Option<String> = None;
-                let events = Parser::new_ext(&page.content, md_opts)
-                    .map(|e| match e {
+                let mut events = Vec::with_capacity(1024);
+                for event in Parser::new_ext(&page.content, md_opts) {
+                    match &event {
                         Event::Code(s) => {
                             if s.starts_with('$') && s.ends_with('$') {
                                 // Convert inline LaTeX blocks (e.g. `$N+1`) to HTML.
-                                Ok(Event::Html(
+                                events.push(Event::Html(
                                     katex::render_with_opts(&s[1..s.len() - 1], &inline_opts)?
                                         .into(),
-                                ))
+                                ));
                             } else {
                                 // Pass regular inline code blocks on to the formatter.
-                                Ok(Event::Code(s))
+                                events.push(event);
                             }
                         }
                         Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(kind))) => {
                             // If the fenced code block doesn't have a kind, pass it on directly.
                             if kind.is_empty() {
-                                Ok(Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(kind))))
+                                events.push(event);
                             } else {
                                 // Otherwise, record the fenced block kind, but don't pass the start
                                 // on to the formatter. We'll handle our own <pre><code> blocking.
                                 fence_kind = Some(kind.to_string());
-                                Ok(Event::Text("".into()))
                             }
                         }
-                        Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(kind))) => {
+                        Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(_))) => {
                             // If the fenced code block doesn't have a kind, pass it on directly.
                             if fence_kind.is_none() {
-                                Ok(Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(kind))))
+                                events.push(event);
                             } else {
                                 // Reset the fenced block kind. Again, don't pass the end on to the
                                 // formatter.
                                 fence_kind = None;
-                                Ok(Event::Text("".into()))
                             }
                         }
                         Event::Text(s) => {
@@ -245,32 +244,31 @@ impl Site {
                             if let Some(kind) = &fence_kind {
                                 if kind.as_str() == "latex" {
                                     // Render LaTeX as HTML using KaTeX.
-                                    let html = katex::render_with_opts(&s, &block_opts)?;
-                                    Ok(Event::Html(html.into()))
+                                    let html = katex::render_with_opts(s, &block_opts)?;
+                                    events.push(Event::Html(html.into()))
                                 } else if let Some(syntax) = ss.find_syntax_by_token(kind) {
                                     // If we can find a Syntect syntax for the given kind, format it
                                     // as syntax highlighted HTML.
-                                    let html = highlighted_html_for_string(&s, &ss, syntax, theme);
-                                    Ok(Event::Html(html.into()))
+                                    let html = highlighted_html_for_string(s, &ss, syntax, theme);
+                                    events.push(Event::Html(html.into()))
                                 } else {
                                     // If we don't know what kind this code is, just escape it and
                                     // slap it in a <pre><code> block.
                                     let mut html = String::with_capacity(s.len());
                                     html.push_str("<pre><code>");
-                                    escape::escape_html(&mut html, &s)?;
+                                    escape::escape_html(&mut html, s)?;
                                     html.push_str("</code></pre>");
-                                    Ok(Event::Html(html.into()))
+                                    events.push(Event::Html(html.into()))
                                 }
                             } else {
                                 // If we're not in a fenced code block, just pass the text on.
-                                Ok(Event::Text(s))
+                                events.push(event);
                             }
                         }
                         // Pass all other events on untouched.
-                        e => Ok(e),
-                    })
-                    // Convert to a vec of events and return the first error, if any.
-                    .collect::<Result<Vec<Event>>>()?;
+                        _ => events.push(event),
+                    }
+                }
 
                 // Render as HTML.
                 html::push_html(&mut out, events.into_iter());
