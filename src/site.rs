@@ -13,7 +13,7 @@ use grass::OutputStyle;
 use gray_matter::{engine, Matter};
 use katex::Opts;
 use notify::{DebouncedEvent, RecursiveMode, Watcher};
-use pulldown_cmark::{escape, html, CodeBlockKind, Event, Options, Parser, Tag};
+use pulldown_cmark::{html, CodeBlockKind, Event, Options, Parser, Tag};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use syntect::highlighting::ThemeSet;
@@ -252,13 +252,13 @@ impl Site {
                                     let html = highlighted_html_for_string(s, &ss, syntax, theme);
                                     events.push(Event::Html(html.into()))
                                 } else {
-                                    // If we don't know what kind this code is, just escape it and
-                                    // slap it in a <pre><code> block.
-                                    let mut html = String::with_capacity(s.len());
-                                    html.push_str("<pre><code>");
-                                    escape::escape_html(&mut html, s)?;
-                                    html.push_str("</code></pre>");
-                                    events.push(Event::Html(html.into()))
+                                    // If we don't know what kind this code is, just slap it in a
+                                    // <pre><code> block.
+                                    events.extend_from_slice(&[
+                                        Event::Html("<pre><code>".into()),
+                                        Event::Text(s.clone()),
+                                        Event::Html("</code></pre>".into()),
+                                    ]);
                                 }
                             } else {
                                 // If we're not in a fenced code block, just pass the text on.
