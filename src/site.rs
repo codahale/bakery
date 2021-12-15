@@ -12,6 +12,7 @@ use fs_extra::dir::CopyOptions;
 use grass::OutputStyle;
 use gray_matter::{engine, Matter};
 use katex::Opts;
+use lazy_static::lazy_static;
 use notify::{DebouncedEvent, RecursiveMode, Watcher};
 use pulldown_cmark::{html, CodeBlockKind, Event, Options, Parser, Tag};
 use rayon::prelude::*;
@@ -188,9 +189,7 @@ impl Site {
 
     fn render_content(&mut self) -> Result<()> {
         let md_opts = Options::all();
-        let ss = SyntaxSet::load_defaults_newlines();
-        let themes = ThemeSet::load_defaults();
-        let theme = themes
+        let theme = THEME_SET
             .themes
             .get(&self.config.theme)
             .ok_or_else(|| anyhow!("Invalid syntax theme: {:?}", &self.config.theme))?;
@@ -246,10 +245,11 @@ impl Site {
                                     // Render LaTeX as HTML using KaTeX.
                                     let html = katex::render_with_opts(s, &block_opts)?;
                                     events.push(Event::Html(html.into()))
-                                } else if let Some(syntax) = ss.find_syntax_by_token(kind) {
+                                } else if let Some(syntax) = SYNTAX_SET.find_syntax_by_token(kind) {
                                     // If we can find a Syntect syntax for the given kind, format it
                                     // as syntax highlighted HTML.
-                                    let html = highlighted_html_for_string(s, &ss, syntax, theme);
+                                    let html =
+                                        highlighted_html_for_string(s, &SYNTAX_SET, syntax, theme);
                                     events.push(Event::Html(html.into()))
                                 } else {
                                     // If we don't know what kind this code is, just slap it in a
@@ -413,3 +413,8 @@ const TEMPLATES_DIR: &str = "templates";
 const CONFIG_FILENAME: &str = "bakery.toml";
 const FEED_FILENAME: &str = "atom.xml";
 const INDEX_HTML: &str = "index.html";
+
+lazy_static! {
+    static ref SYNTAX_SET: SyntaxSet = SyntaxSet::load_defaults_newlines();
+    static ref THEME_SET: ThemeSet = ThemeSet::load_defaults();
+}

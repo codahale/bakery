@@ -78,6 +78,7 @@ dependencies = [
  "grass",
  "gray_matter",
  "katex",
+ "lazy_static",
  "notify",
  "pulldown-cmark",
  "rayon",
