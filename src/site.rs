@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -22,6 +23,7 @@ use syntect::html::highlighted_html_for_string;
 use syntect::parsing::SyntaxSet;
 use tera::{Context as TeraContext, Tera};
 use url::Url;
+use walkdir::{DirEntry, WalkDir};
 
 #[derive(Debug, Serialize)]
 pub struct Site {
@@ -47,22 +49,22 @@ impl Site {
             .with_context(|| format!("Failed to find site directory: {:?}", dir))?;
 
         let content_dir = dir.join(CONTENT_SUBDIR);
-        let paths = glob::glob(
-            content_dir
-                .join("**")
-                .join("*.md")
-                .to_string_lossy()
-                .as_ref(),
-        )
-        .with_context(|| format!("Failed to find content directory: {:?}", &content_dir))?
-        .filter_map(Result::ok)
-        .collect::<Vec<PathBuf>>();
+        let paths = WalkDir::new(&content_dir)
+            .into_iter()
+            .filter_map(|r| r.ok())
+            .map(DirEntry::into_path)
+            .filter(|path| {
+                path.extension()
+                    .and_then(OsStr::to_str)
+                    .map(|ext| ext == "md")
+                    .unwrap_or(false)
+            })
+            .par_bridge();
 
         let pages = paths
-            .par_iter()
             .map(|path| {
                 let file = matter.parse(
-                    &fs::read_to_string(path)
+                    &fs::read_to_string(&path)
                         .with_context(|| format!("Failed to read file {:?}", path))?,
                 );
                 let pod = file
@@ -138,23 +140,12 @@ impl Site {
     }
 
     fn copy_assets(&self) -> Result<()> {
-        let _ = fs::create_dir(&self.target_dir);
+        let mut options = CopyOptions::new();
+        options.content_only = true;
 
-        let paths = glob::glob(
-            self.dir
-                .join(STATIC_SUBDIR)
-                .join("**")
-                .join("*")
-                .to_string_lossy()
-                .as_ref(),
-        )
-        .with_context(|| format!("Error traversing {:?}", &self.dir))?
-        .collect::<std::result::Result<Vec<PathBuf>, glob::GlobError>>()
-        .with_context(|| format!("Error traversing {:?}", &self.dir))?;
-
-        let options = &CopyOptions::new();
-        fs_extra::copy_items(&paths, &self.target_dir, options)
-            .with_context(|| format!("Error copying assets: {:?}", paths))?;
+        let static_dir = self.dir.join(STATIC_SUBDIR);
+        fs_extra::dir::copy(&static_dir, &self.target_dir, &options)
+            .with_context(|| format!("Error copying assets from {:?}", &static_dir))?;
 
         Ok(())
     }
