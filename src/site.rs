@@ -9,7 +9,6 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Context, Result};
 use atom_syndication::{ContentBuilder, Entry, EntryBuilder, FeedBuilder, Text};
 use chrono::{DateTime, Utc};
-use fs_extra::dir::CopyOptions;
 use grass::OutputStyle;
 use gray_matter::{engine, Matter};
 use katex::Opts;
@@ -52,6 +51,7 @@ impl Site {
         let paths = WalkDir::new(&content_dir)
             .into_iter()
             .filter_map(|r| r.ok())
+            .filter(|e| e.file_type().is_file())
             .map(DirEntry::into_path)
             .filter(|path| {
                 path.extension()
@@ -138,12 +138,38 @@ impl Site {
     }
 
     fn copy_assets(&self) -> Result<()> {
-        let mut options = CopyOptions::new();
-        options.content_only = true;
-
         let static_dir = self.dir.join(STATIC_SUBDIR);
-        fs_extra::dir::copy(&static_dir, &self.target_dir, &options)
-            .with_context(|| format!("Error copying assets from {:?}", &static_dir))?;
+
+        // Collect asset directories and files.
+        let (dirs, files): (Vec<DirEntry>, Vec<DirEntry>) = WalkDir::new(&static_dir)
+            .into_iter()
+            .filter_map(|r| r.ok())
+            .filter(|e| e.file_type().is_dir() || e.file_type().is_file())
+            .partition(|e| e.file_type().is_dir());
+
+        // Create the asset directory structure.
+        for dir in dirs {
+            let dst = self
+                .target_dir
+                .join(dir.path().strip_prefix(&static_dir).unwrap());
+            fs::create_dir_all(&dst)
+                .with_context(|| format!("Error creating directory: {:?}", &dst))?;
+        }
+
+        // Copy the files over in parallel.
+        files
+            .par_iter()
+            .map(|e| {
+                let dst = self
+                    .target_dir
+                    .join(e.path().strip_prefix(&static_dir).unwrap());
+
+                fs::copy(e.path(), &dst)
+                    .with_context(|| format!("Error copying asset {:?} to {:?}", e.path(), &dst))?;
+
+                Ok(())
+            })
+            .collect::<Result<Vec<()>>>()?;
 
         Ok(())
     }
