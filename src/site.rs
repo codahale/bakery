@@ -143,7 +143,8 @@ impl Site {
         let paths = glob::glob(
             self.dir
                 .join(STATIC_SUBDIR)
-                .join("[!_]*")
+                .join("**")
+                .join("*")
                 .to_string_lossy()
                 .as_ref(),
         )
