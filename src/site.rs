@@ -63,16 +63,14 @@ impl Site {
 
         let pages = paths
             .map(|path| {
-                let file = matter.parse(
-                    &fs::read_to_string(&path)
-                        .with_context(|| format!("Failed to read file {:?}", path))?,
-                );
-                let pod = file
-                    .data
-                    .ok_or_else(|| anyhow!("Missing front matter in {:?}", path))?;
-                let mut page: Page = pod
-                    .deserialize()
-                    .with_context(|| format!("Invalid front matter in {:?}", path))?;
+                let file = matter
+                    .parse_with_struct::<Page>(
+                        &fs::read_to_string(&path)
+                            .with_context(|| format!("Failed to read file {:?}", path))?,
+                    )
+                    .ok_or_else(|| anyhow!("Invalid front matter in {:?}", path))?;
+
+                let mut page = file.data;
                 page.content = file.content;
                 page.excerpt = file.excerpt;
                 if drafts {
