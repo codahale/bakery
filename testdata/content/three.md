@@ -1,0 +1,30 @@
+---
+title = "Three"
+description = "Acswept no swubstiswuits."
+date = "2021-11-29T00:00:00Z"
+template = "page.html"
+draft = true
+---
+
+# This is markdown.
+
+<p class="message">Some pass-through HTML.</p>
+
+Oh good! This is an inline doohicky: `$N=100$`.
+
+```latex
+\begin{matrix}
+a & b \\\\
+c & d
+\end{matrix}
+```
+
+---
+
+```latex
+X(N) = \dfrac{\lambda N}{1+\sigma(N-1)+\kappa N(N-1)}
+```
+
+* `$\sigma$`, the overhead of contention
+* `$\kappa$`, the overhead of crosstalk
+* `$\lambda$`, how fast the system operates in ideal conditions

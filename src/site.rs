@@ -73,14 +73,14 @@ impl Site {
                 let mut page = file.data;
                 page.content = file.content;
                 page.excerpt = file.excerpt;
-                if drafts {
-                    page.draft = false;
-                }
+
                 let mut page_name = path.strip_prefix(&content_dir).unwrap().to_path_buf();
                 page_name.set_extension("");
                 page.name = page_name.to_string_lossy().to_string();
+
                 Ok(page)
             })
+            .filter(|r| r.as_ref().map(|p| drafts || !p.draft).unwrap_or(true))
             .collect::<Result<Vec<Page>>>()?;
 
         let config: SiteConfig = toml::from_str(&fs::read_to_string(dir.join(CONFIG_FILENAME))?)?;
