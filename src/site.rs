@@ -33,10 +33,13 @@ pub struct Site {
 
     #[serde(skip_serializing)]
     target_dir: PathBuf,
+
+    #[serde(skip_serializing)]
+    drafts: bool,
 }
 
 impl Site {
-    pub fn build<P: AsRef<Path> + Debug>(dir: P, enable_drafts: bool) -> Result<()> {
+    pub fn new<P: AsRef<Path> + Debug>(dir: P, drafts: bool) -> Result<Site> {
         let matter = Matter::<engine::TOML>::new();
         let dir = dir
             .as_ref()
@@ -70,7 +73,7 @@ impl Site {
                     .with_context(|| format!("Invalid front matter in {:?}", path))?;
                 page.content = file.content;
                 page.excerpt = file.excerpt;
-                if enable_drafts {
+                if drafts {
                     page.draft = false;
                 }
                 let mut page_name = path.strip_prefix(&content_dir).unwrap().to_path_buf();
@@ -82,26 +85,31 @@ impl Site {
 
         let config: SiteConfig = toml::from_str(&fs::read_to_string(dir.join(CONFIG_FILENAME))?)?;
         let target_dir = dir.join(TARGET_SUBDIR);
-        let mut site = Site {
+        Ok(Site {
             pages,
             config,
             dir,
             target_dir,
-        };
-
-        site.clean_output_dir()?;
-        site.render_sass()?;
-        site.copy_assets()?;
-        site.render_content()?;
-        site.render_html()?;
-        site.render_feed()
+            drafts,
+        })
     }
 
-    pub fn watch<P: AsRef<Path> + Debug>(dir: P, enable_drafts: bool) -> Result<()> {
+    pub fn build(mut self) -> Result<()> {
+        self.clean_output_dir()?;
+        self.render_sass()?;
+        self.copy_assets()?;
+        self.render_content()?;
+        self.render_html()?;
+        self.render_feed()
+    }
+
+    pub fn watch(self) -> Result<()> {
         let (tx, rx) = mpsc::channel();
         let mut watcher = notify::watcher(tx, Duration::from_secs(1))?;
-        watcher.watch(&dir, RecursiveMode::Recursive)?;
-        let target_dir = dir.as_ref().canonicalize()?.join(TARGET_SUBDIR);
+        watcher.watch(&self.dir, RecursiveMode::Recursive)?;
+        let dir = self.dir.clone();
+        let drafts = self.drafts;
+        let mut site = self;
         loop {
             match rx.recv() {
                 Ok(event) => match event {
@@ -115,10 +123,11 @@ impl Site {
                             .extension()
                             .map(|s| s.to_string_lossy().ends_with('~'))
                             .unwrap_or(false)
-                            && !path.starts_with(&target_dir)
+                            && !path.starts_with(&site.target_dir)
                         {
                             println!("Rebuilding site...");
-                            Site::build(&dir, enable_drafts)?;
+                            site.build()?;
+                            site = Site::new(&dir, drafts)?;
                         }
                     }
                     _ => {}

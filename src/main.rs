@@ -9,13 +9,12 @@ mod site;
 
 fn main() -> Result<()> {
     let opts: Opts = Opts::parse();
-
-    println!("Building site...");
-    Site::build(&opts.dir, opts.drafts)?;
+    let site = Site::new(&opts.dir, opts.drafts)?;
 
     if opts.watch {
-        println!("Watching for changes...");
-        Site::watch(&opts.dir, opts.drafts)?;
+        site.watch()?;
+    } else {
+        site.build()?;
     }
 
     Ok(())
