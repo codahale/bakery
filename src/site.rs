@@ -121,11 +121,14 @@ impl Site {
     }
 
     pub fn watch(self) -> Result<()> {
-        let (tx, rx) = mpsc::channel();
-        let mut watcher = notify::watcher(tx, Duration::from_secs(1))?;
-        watcher.watch(&self.dir, RecursiveMode::Recursive)?;
         let dir = self.dir.clone();
         let drafts = self.drafts;
+
+        let (tx, rx) = mpsc::channel();
+        tx.send(DebouncedEvent::Write(dir.clone()))?;
+        let mut watcher = notify::watcher(tx, Duration::from_secs(1))?;
+        watcher.watch(&self.dir, RecursiveMode::Recursive)?;
+
         let mut site = self;
         loop {
             match rx.recv() {
