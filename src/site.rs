@@ -11,6 +11,7 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Context, Result};
 use atom_syndication::{ContentBuilder, Entry, EntryBuilder, FeedBuilder, Text};
 use chrono::{DateTime, Utc};
+use ctor::ctor;
 use grass::OutputStyle;
 use gray_matter::{engine, Matter};
 use katex::Opts;
@@ -438,4 +439,14 @@ const INDEX_HTML: &str = "index.html";
 lazy_static! {
     static ref SYNTAX_SET: SyntaxSet = SyntaxSet::load_defaults_newlines();
     static ref THEME_SET: ThemeSet = ThemeSet::load_defaults();
+}
+
+#[ctor]
+fn init() {
+    rayon::spawn(|| {
+        lazy_static::initialize(&SYNTAX_SET);
+    });
+    rayon::spawn(|| {
+        lazy_static::initialize(&THEME_SET);
+    })
 }
