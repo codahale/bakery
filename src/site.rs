@@ -124,12 +124,12 @@ impl Site {
         let dir = self.dir.clone();
         let drafts = self.drafts;
 
+        // Create a channel pair for events and send a first event to trigger the initial build.
         let (tx, rx) = mpsc::channel();
         tx.send(DebouncedEvent::Write(dir.clone()))?;
         let mut watcher = notify::watcher(tx, Duration::from_secs(1))?;
         watcher.watch(&self.dir, RecursiveMode::Recursive)?;
 
-        let mut site = self;
         loop {
             match rx.recv() {
                 Ok(event) => match event {
@@ -142,11 +142,11 @@ impl Site {
                             .extension()
                             .map(|s| s.to_string_lossy().ends_with('~'))
                             .unwrap_or(false)
-                            && !path.starts_with(&site.target_dir)
+                            && !path.starts_with(&self.target_dir)
                         {
                             println!("Rebuilding site...");
+                            let site = Site::new(&dir, drafts)?;
                             site.build()?;
-                            site = Site::new(&dir, drafts)?;
                         }
                     }
                     _ => {}
