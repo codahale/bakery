@@ -27,6 +27,7 @@ use tera::{Context as TeraContext, Tera};
 use url::Url;
 use walkdir::{DirEntry, WalkDir};
 
+/// A bakery site.
 #[derive(Debug, Serialize)]
 pub struct Site {
     pages: Vec<Page>,
@@ -43,13 +44,15 @@ pub struct Site {
 }
 
 impl Site {
+    /// Load a bakery site from the given directory. If `drafts` is true, includes all draft pages.
     pub fn new<P: AsRef<Path> + Debug>(dir: P, drafts: bool) -> Result<Site> {
-        let matter = Matter::<engine::TOML>::new();
+        // Convert the path to canonical, if possible.
         let dir = dir
             .as_ref()
             .canonicalize()
             .with_context(|| format!("Failed to find site directory: {:?}", dir))?;
 
+        // Scan the content subdirectory for .md files.
         let content_dir = dir.join(CONTENT_SUBDIR);
         let paths = WalkDir::new(&content_dir)
             .into_iter()
@@ -59,34 +62,45 @@ impl Site {
             .filter(|path| {
                 path.extension()
                     .and_then(OsStr::to_str)
-                    .map(|ext| ext == "md")
+                    .map(|ext| ext == MARKDOWN_EXT)
                     .unwrap_or(false)
             })
-            .par_bridge();
+            .collect::<Vec<PathBuf>>();
 
+        // In parallel, parse the TOML front matter from each page file.
+        let matter = Matter::<engine::TOML>::new();
         let pages = paths
+            .par_iter()
             .map(|path| {
-                let file = matter
-                    .parse_with_struct::<Page>(
-                        &fs::read_to_string(&path)
-                            .with_context(|| format!("Failed to read file {:?}", path))?,
-                    )
+                // Read the file contents.
+                let s = fs::read_to_string(&path)
+                    .with_context(|| format!("Failed to read file {:?}", path))?;
+
+                // Parse the front matter and contents.
+                let parsed = matter
+                    .parse_with_struct::<Page>(&s)
                     .ok_or_else(|| anyhow!("Invalid front matter in {:?}", path))?;
 
-                let mut page = file.data;
-                page.content = file.content;
-                page.excerpt = file.excerpt;
+                // Extract the page metadata and add the content and excerpt.
+                let mut page = parsed.data;
+                page.content = parsed.content;
+                page.excerpt = parsed.excerpt;
 
+                // Infer the page name from the page filename.
                 let mut page_name = path.strip_prefix(&content_dir).unwrap().to_path_buf();
                 page_name.set_extension("");
                 page.name = page_name.to_string_lossy().to_string();
 
                 Ok(page)
             })
+            // Filter out drafts, if necessary.
             .filter(|r| r.as_ref().map(|p| drafts || !p.draft).unwrap_or(true))
             .collect::<Result<Vec<Page>>>()?;
 
+        // Load the site config.
         let config: SiteConfig = toml::from_str(&fs::read_to_string(dir.join(CONFIG_FILENAME))?)?;
+
+        // Return the unbaked site.
         let target_dir = dir.join(TARGET_SUBDIR);
         Ok(Site {
             pages,
@@ -424,6 +438,8 @@ struct Page {
     #[serde(skip_deserializing)]
     content: String,
 }
+
+const MARKDOWN_EXT: &str = "md";
 
 const CONTENT_SUBDIR: &str = "content";
 const CSS_SUBDIR: &str = "css";
