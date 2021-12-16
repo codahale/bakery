@@ -111,8 +111,9 @@ impl Site {
         })
     }
 
+    /// Build the site.
     pub fn build(mut self) -> Result<()> {
-        self.clean_output_dir()?;
+        self.clean_target_dir()?;
         self.render_sass()?;
         self.copy_assets()?;
         self.render_content()?;
@@ -120,6 +121,7 @@ impl Site {
         self.render_feed()
     }
 
+    /// Build the site and watch for updated files, rebuilding when necessary. Does not return.
     pub fn watch(self) -> Result<()> {
         let dir = self.dir.clone();
         let drafts = self.drafts;
@@ -127,6 +129,8 @@ impl Site {
         // Create a channel pair for events and send a first event to trigger the initial build.
         let (tx, rx) = mpsc::channel();
         tx.send(DebouncedEvent::Write(dir.clone()))?;
+
+        // Watch the site directory for changes.
         let mut watcher = notify::watcher(tx, Duration::from_secs(1))?;
         watcher.watch(&self.dir, RecursiveMode::Recursive)?;
 
@@ -138,6 +142,7 @@ impl Site {
                     | DebouncedEvent::Write(path)
                     | DebouncedEvent::Remove(path)
                     | DebouncedEvent::Rename(path, _) => {
+                        // Ignore files in the target dir and temporary files.
                         if !path
                             .extension()
                             .map(|s| s.to_string_lossy().ends_with('~'))
@@ -156,6 +161,7 @@ impl Site {
         }
     }
 
+    /// Copy all of the files in the `static` subdirectory into the target directory.
     fn copy_assets(&self) -> Result<()> {
         let static_dir = self.dir.join(STATIC_SUBDIR);
 
@@ -193,12 +199,15 @@ impl Site {
         Ok(())
     }
 
-    fn clean_output_dir(&self) -> Result<()> {
+    /// Removes all files and subdirectories from the `target` subdirectory and re-creates it.
+    fn clean_target_dir(&self) -> Result<()> {
         let _ = fs::remove_dir_all(&self.target_dir);
         fs::create_dir(&self.target_dir)
             .with_context(|| format!("Error creating {:?}", &self.target_dir))
     }
 
+    /// Creates the `css` directory in the `target` subdirectory and renders all registered
+    /// SASS/SCSS files.
     fn render_sass(&self) -> Result<()> {
         let sass_dir = self.dir.join(SASS_SUBDIR);
         let css_dir = self.target_dir.join(CSS_SUBDIR);
@@ -230,6 +239,7 @@ impl Site {
             .collect::<Result<()>>()
     }
 
+    /// Renders all Markdown, including embedded LaTeX equations.
     fn render_content(&mut self) -> Result<()> {
         let md_opts = Options::all();
         let theme = THEME_SET
@@ -322,6 +332,7 @@ impl Site {
             .collect()
     }
 
+    /// Render all pages using their declared HTML templates.
     fn render_html(&mut self) -> Result<()> {
         let templates = Tera::new(
             self.dir
@@ -362,6 +373,7 @@ impl Site {
             .collect()
     }
 
+    /// Build and render an Atom feed of all pages with dates.
     fn render_feed(&self) -> Result<()> {
         let entries: Vec<Entry> = self
             .pages
