@@ -133,9 +133,8 @@ impl Site {
         loop {
             match rx.recv() {
                 Ok(event) => match event {
-                    DebouncedEvent::NoticeWrite(path)
-                    | DebouncedEvent::NoticeRemove(path)
-                    | DebouncedEvent::Create(path)
+                    DebouncedEvent::Create(path)
+                    | DebouncedEvent::Chmod(path)
                     | DebouncedEvent::Write(path)
                     | DebouncedEvent::Remove(path)
                     | DebouncedEvent::Rename(path, _) => {
