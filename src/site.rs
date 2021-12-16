@@ -113,12 +113,25 @@ impl Site {
 
     /// Build the site.
     pub fn build(mut self) -> Result<()> {
-        self.clean_target_dir()?;
-        self.render_sass()?;
-        self.copy_assets()?;
         self.render_content()?;
-        self.render_html()?;
-        self.render_feed()
+
+        let mut clean: Result<()> = Ok(());
+        let mut sass: Result<()> = Ok(());
+        let mut assets: Result<()> = Ok(());
+        let mut html: Result<()> = Ok(());
+        let mut feed: Result<()> = Ok(());
+
+        rayon::scope(|s| {
+            s.spawn(|s| {
+                clean = self.clean_target_dir();
+                s.spawn(|_| sass = self.render_sass());
+                s.spawn(|_| assets = self.copy_assets());
+                s.spawn(|_| html = self.render_html());
+                s.spawn(|_| feed = self.render_feed());
+            });
+        });
+
+        clean.or(sass).or(assets).or(html).or(feed)
     }
 
     /// Build the site and watch for updated files, rebuilding when necessary. Does not return.
@@ -333,7 +346,7 @@ impl Site {
     }
 
     /// Render all pages using their declared HTML templates.
-    fn render_html(&mut self) -> Result<()> {
+    fn render_html(&self) -> Result<()> {
         let templates = Tera::new(
             self.dir
                 .join(TEMPLATES_DIR)
