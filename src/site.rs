@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::fs;
+use std::fs::File;
+use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
@@ -176,13 +178,14 @@ impl Site {
 
     fn clean_output_dir(&self) -> Result<()> {
         let _ = fs::remove_dir_all(&self.target_dir);
-
-        Ok(())
+        fs::create_dir(&self.target_dir)
+            .with_context(|| format!("Error creating {:?}", &self.target_dir))
     }
 
     fn render_sass(&self) -> Result<()> {
         let sass_dir = self.dir.join(SASS_SUBDIR);
         let css_dir = self.target_dir.join(CSS_SUBDIR);
+        fs::create_dir(&css_dir).with_context(|| format!("Error creating {:?}", &css_dir))?;
 
         let mut options = grass::Options::default().style(if self.config.sass.compressed {
             OutputStyle::Compressed
@@ -205,9 +208,7 @@ impl Site {
                 let css = grass::from_path(sass_path.to_string_lossy().as_ref(), &options)
                     .map_err(|e| anyhow::Error::msg(e.to_string()))?;
 
-                write_p(&css_path, css)?;
-
-                Ok(())
+                fs::write(&css_path, css).with_context(|| format!("Error writing {:?}", &css_path))
             })
             .collect::<Result<()>>()
     }
@@ -316,14 +317,6 @@ impl Site {
         self.pages
             .par_iter()
             .map(|page| {
-                let mut context = TeraContext::from_serialize(page)
-                    .with_context(|| format!("Error rendering page {}", page.name))?;
-                context.insert("site", &self);
-
-                let html = templates
-                    .render(&page.template, &context)
-                    .with_context(|| format!("Error rendering page {}", page.name))?;
-
                 let path = if page.name == "index" {
                     self.dir.join(TARGET_SUBDIR).join(INDEX_HTML)
                 } else {
@@ -333,9 +326,21 @@ impl Site {
                         .join(INDEX_HTML)
                 };
 
-                write_p(path, html)?;
+                if let Some(parent) = path.parent() {
+                    let _ = fs::create_dir(parent);
+                }
 
-                Ok(())
+                let f = BufWriter::new(
+                    File::create(&path).with_context(|| format!("Error creating {:?}", &path))?,
+                );
+
+                let mut context = TeraContext::from_serialize(page)
+                    .with_context(|| format!("Error rendering page {}", page.name))?;
+                context.insert("site", &self);
+
+                templates
+                    .render_to(&page.template, &context, f)
+                    .with_context(|| format!("Error rendering page {}", page.name))
             })
             .collect()
     }
@@ -359,13 +364,16 @@ impl Site {
             })
             .collect();
 
-        let atom = FeedBuilder::default()
+        let path = self.dir.join(TARGET_SUBDIR).join(FEED_FILENAME);
+        let f = BufWriter::new(File::create(&path)?);
+
+        FeedBuilder::default()
             .title(self.config.title.as_str())
             .id(self.config.base_url.as_str())
             .entries(entries)
             .build()
-            .to_string();
-        write_p(self.dir.join(TARGET_SUBDIR).join(FEED_FILENAME), &atom)?;
+            .write_to(f)
+            .with_context(|| format!("Error creating {:?}", &path))?;
 
         Ok(())
     }
@@ -414,18 +422,6 @@ struct Page {
 
     #[serde(skip_deserializing)]
     content: String,
-}
-
-fn write_p<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) -> Result<()> {
-    if let Some(parent) = path.as_ref().parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("Error creating directory {:?}", &parent))?;
-    }
-
-    fs::write(&path, contents)
-        .with_context(|| format!("Error creating file {:?}", path.as_ref()))?;
-
-    Ok(())
 }
 
 const CONTENT_SUBDIR: &str = "content";
