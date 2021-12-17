@@ -12,6 +12,7 @@ clap = { version = "3.0.0-rc.7", features = ["derive"] }
 ctor = "0.1"
 grass = { version = "0.10", default-features = false, features = ["random"] }
 gray_matter = "0.2"
+itertools = "0.10"
 katex = "0.4"
 lazy_static = "1"
 notify = "4"

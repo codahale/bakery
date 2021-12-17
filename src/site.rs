@@ -14,6 +14,7 @@ use chrono::{DateTime, Utc};
 use ctor::ctor;
 use grass::OutputStyle;
 use gray_matter::{engine, Matter};
+use itertools::Itertools;
 use katex::Opts;
 use lazy_static::lazy_static;
 use notify::{DebouncedEvent, RecursiveMode, Watcher};
@@ -56,16 +57,15 @@ impl Site {
         let content_dir = dir.join(CONTENT_SUBDIR);
         let paths = WalkDir::new(&content_dir)
             .into_iter()
-            .filter_map(|r| r.ok())
-            .filter(|e| e.file_type().is_file())
-            .map(DirEntry::into_path)
-            .filter(|path| {
+            .filter_ok(|e| e.file_type().is_file())
+            .map_ok(DirEntry::into_path)
+            .filter_ok(|path| {
                 path.extension()
                     .and_then(OsStr::to_str)
                     .map(|ext| ext == MARKDOWN_EXT)
                     .unwrap_or(false)
             })
-            .collect::<Vec<PathBuf>>();
+            .collect::<walkdir::Result<Vec<PathBuf>>>()?;
 
         // In parallel, parse the TOML front matter from each page file.
         let matter = Matter::<engine::TOML>::new();
