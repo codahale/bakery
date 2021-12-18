@@ -28,8 +28,12 @@ use tera::{Context as TeraContext, Tera};
 use url::Url;
 use walkdir::{DirEntry, WalkDir};
 
-pub fn watch<P: AsRef<Path>>(dir: P, drafts: bool) -> Result<()> {
-    let dir = dir.as_ref().canonicalize()?;
+pub fn watch<P: AsRef<Path> + Debug>(dir: P, drafts: bool) -> Result<()> {
+    // Convert the path to canonical, if possible.
+    let dir = dir
+        .as_ref()
+        .canonicalize()
+        .with_context(|| format!("Failed to find site directory: {:?}", dir))?;
     let target_dir = dir.join(TARGET_SUBDIR);
 
     // Create a channel pair for events and send a first event to trigger the initial build.
