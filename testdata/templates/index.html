@@ -3,7 +3,7 @@
 <h1 class="page-title">{{ title }}</h1>
 {{ content | safe }}
 <ul class="related-posts">
-    {%- for page in site.pages | filter(attribute="date") | sort(attribute="date") | reverse %}
+    {%- for page in pages | filter(attribute="date") | sort(attribute="date") | reverse %}
     <li>
         <a href="/{{ page.name }}">
             {{ page.title }}

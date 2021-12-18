@@ -3,21 +3,15 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, ValueHint};
 
-use crate::site::Site;
-
 mod site;
 
 fn main() -> Result<()> {
     let opts: Opts = Opts::parse();
-    let site = Site::new(&opts.dir, opts.drafts)?;
-
     if opts.watch {
-        site.watch()?;
+        site::watch(&opts.dir, opts.drafts)
     } else {
-        site.build()?;
+        site::build(&opts.dir, opts.drafts)
     }
-
-    Ok(())
 }
 
 /// Build a dang website, I guess.
