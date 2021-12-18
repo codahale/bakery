@@ -193,9 +193,7 @@ fn copy_assets(dir: &Path, target_dir: &Path) -> Result<()> {
 
             Ok(())
         })
-        .collect::<Result<Vec<()>>>()?;
-
-    Ok(())
+        .collect::<Result<()>>()
 }
 
 fn render_sass(dir: &Path, target_dir: &Path, sass: &SassConfig) -> Result<()> {
