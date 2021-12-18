@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::fs;
 use std::fs::File;
@@ -12,6 +11,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use atom_syndication::{ContentBuilder, Entry, EntryBuilder, FeedBuilder, Text};
 use chrono::{DateTime, Utc};
 use ctor::ctor;
+use globwalk::{FileType, GlobWalkerBuilder};
 use grass::OutputStyle;
 use gray_matter::{engine, Matter};
 use itertools::Itertools;
@@ -157,18 +157,12 @@ fn load_pages(content_dir: &Path) -> Result<Vec<Page>> {
         .collect::<Result<Vec<Page>>>()
 }
 
-fn find_pages(content_dir: &Path) -> walkdir::Result<Vec<PathBuf>> {
-    WalkDir::new(&content_dir)
-        .into_iter()
-        .filter_ok(|e| e.file_type().is_file())
-        .map_ok(DirEntry::into_path)
-        .filter_ok(|path| {
-            path.extension()
-                .and_then(OsStr::to_str)
-                .map(|ext| ext == MARKDOWN_EXT)
-                .unwrap_or(false)
-        })
-        .collect::<walkdir::Result<Vec<PathBuf>>>()
+fn find_pages(content_dir: &Path) -> Result<Vec<PathBuf>> {
+    Ok(GlobWalkerBuilder::new(&content_dir, "*.md")
+        .file_type(FileType::FILE)
+        .build()?
+        .map_ok(|e| e.into_path())
+        .collect::<walkdir::Result<Vec<PathBuf>>>()?)
 }
 
 fn copy_assets(dir: &Path, target_dir: &Path) -> Result<()> {
@@ -444,7 +438,6 @@ const STATIC_SUBDIR: &str = "static";
 const TARGET_SUBDIR: &str = "target";
 const TEMPLATES_DIR: &str = "templates";
 
-const MARKDOWN_EXT: &str = "md";
 const CONFIG_FILENAME: &str = "bakery.toml";
 const FEED_FILENAME: &str = "atom.xml";
 const INDEX_FILENAME: &str = "index.html";
