@@ -6,6 +6,8 @@ use clap::{Parser, ValueHint};
 mod site;
 
 fn main() -> Result<()> {
+    tracing_subscriber::fmt::init();
+
     let opts: Opts = Opts::parse();
     if opts.watch {
         site::watch(&opts.dir, opts.drafts)
