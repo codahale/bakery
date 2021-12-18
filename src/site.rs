@@ -117,11 +117,9 @@ pub fn build<P: AsRef<Path> + Debug>(dir: P, drafts: bool) -> Result<()> {
         },
     );
 
-    assets
-        .and(sass)
-        .and(html)
-        .and(feed)
-        .and_then(|_| Ok(tracing::info!("site built")))
+    assets.and(sass).and(html).and(feed).map(|_| {
+        tracing::info!("site built");
+    })
 }
 
 #[instrument]
@@ -274,7 +272,7 @@ fn render_markdown(pages: &mut [Page], theme: &str) -> Result<()> {
                             let s = &s[1..s.len() - 1];
                             tracing::debug!(block=?s, "rendering inline equation");
                             events.push(Event::Html(
-                                katex::render_with_opts(&s, &inline_opts)?.into(),
+                                katex::render_with_opts(s, &inline_opts)?.into(),
                             ));
                         } else {
                             // Pass regular inline code blocks on to the formatter.
