@@ -117,9 +117,11 @@ pub fn build<P: AsRef<Path> + Debug>(dir: P, drafts: bool) -> Result<()> {
         },
     );
 
-    assets.and(sass).and(html).and(feed).map(|_| {
-        tracing::info!("site built");
-    })
+    assets
+        .and(sass)
+        .and(html)
+        .and(feed)
+        .map(|_| tracing::info!("site built"))
 }
 
 #[instrument]
@@ -480,10 +482,6 @@ lazy_static! {
 
 #[ctor]
 fn init() {
-    rayon::spawn(|| {
-        lazy_static::initialize(&SYNTAX_SET);
-    });
-    rayon::spawn(|| {
-        lazy_static::initialize(&THEME_SET);
-    })
+    rayon::spawn(|| lazy_static::initialize(&SYNTAX_SET));
+    rayon::spawn(|| lazy_static::initialize(&THEME_SET));
 }
