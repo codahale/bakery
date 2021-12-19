@@ -83,6 +83,7 @@ dependencies = [
  "chrono",
  "clap",
  "ctor",
+ "globset",
  "globwalk",
  "grass",
  "gray_matter",

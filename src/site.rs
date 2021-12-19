@@ -11,6 +11,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use atom_syndication::{ContentBuilder, Entry, EntryBuilder, FeedBuilder, Text};
 use chrono::{DateTime, Utc};
 use ctor::ctor;
+use globset::{Glob, GlobSetBuilder};
 use globwalk::{FileType, GlobWalkerBuilder};
 use grass::OutputStyle;
 use gray_matter::{engine, Matter};
@@ -44,6 +45,15 @@ pub fn watch<P: AsRef<Path> + Debug>(dir: P, drafts: bool) -> Result<()> {
     let mut watcher = notify::watcher(tx, Duration::from_secs(1))?;
     watcher.watch(&dir, RecursiveMode::Recursive)?;
 
+    // Ignore temp files and the target directory.
+    let ignored = GlobSetBuilder::new()
+        .add(Glob::new("*~")?)
+        .add(Glob::new(target_dir.to_string_lossy().as_ref())?)
+        .add(Glob::new(
+            target_dir.join("**").join("*").to_string_lossy().as_ref(),
+        )?)
+        .build()?;
+
     loop {
         match rx.recv() {
             Ok(event) => match event {
@@ -53,12 +63,7 @@ pub fn watch<P: AsRef<Path> + Debug>(dir: P, drafts: bool) -> Result<()> {
                 | DebouncedEvent::Remove(path)
                 | DebouncedEvent::Rename(path, _) => {
                     // Ignore files in the target dir and temporary files.
-                    if !path
-                        .extension()
-                        .map(|s| s.to_string_lossy().ends_with('~'))
-                        .unwrap_or(false)
-                        && !path.starts_with(&target_dir)
-                    {
+                    if !ignored.is_match(&path) {
                         tracing::info!(target:"rebuild", changed=?path);
                         build(&dir, drafts)?;
                     }
