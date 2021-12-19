@@ -7,6 +7,7 @@ use std::sync::{mpsc, Arc};
 use std::time::Duration;
 use std::{fs, thread};
 
+use aho_corasick::AhoCorasick;
 use anyhow::{anyhow, bail, Context, Result};
 use atom_syndication::{ContentBuilder, Entry, EntryBuilder, FeedBuilder, Text};
 use chrono::{DateTime, Utc};
@@ -14,7 +15,6 @@ use ctor::ctor;
 use globset::{Glob, GlobSetBuilder};
 use globwalk::{FileType, GlobWalkerBuilder};
 use grass::OutputStyle;
-use gray_matter::{engine, Matter};
 use katex::Opts;
 use lazy_static::lazy_static;
 use notify::{DebouncedEvent, RecursiveMode, Watcher};
@@ -161,33 +161,33 @@ fn clean_target_dir(target_dir: &Path) -> Result<()> {
 
 #[instrument]
 fn load_pages(content_dir: &Path) -> Result<Vec<Page>> {
-    let page_paths = find_pages(content_dir)?;
-    let matter = Matter::<engine::TOML>::new();
-    page_paths
+    let matcher = AhoCorasick::new(&["\n---\n"]);
+    find_pages(content_dir)?
         .iter()
         .map(|path| {
             // Read the file contents.
             let s = fs::read_to_string(&path)
                 .with_context(|| format!("Failed to read file {:?}", path))?;
 
-            // Parse the front matter and contents.
-            let parsed = matter
-                .parse_with_struct::<Page>(&s)
-                .ok_or_else(|| anyhow!("Invalid front matter in {:?}", path))?;
+            if let Some(m) = matcher.earliest_find(&s) {
+                // Extract the page metadata and add the content.
+                let header = s[0..m.start()].trim_matches(&['-', '-', '-'] as &[_]);
+                let content = &s[m.end()..];
+                let mut page: Page = toml::from_str(header)
+                    .with_context(|| format!("Invalid front matter in {:?}", path))?;
+                page.content = content.to_string();
 
-            tracing::debug!(path=?path, "loaded page");
+                tracing::debug!(?path, "loaded page");
 
-            // Extract the page metadata and add the content and excerpt.
-            let mut page = parsed.data;
-            page.content = parsed.content;
-            page.excerpt = parsed.excerpt;
+                // Infer the page name from the page filename.
+                let mut page_name = path.strip_prefix(&content_dir).unwrap().to_path_buf();
+                page_name.set_extension("");
+                page.name = page_name.to_string_lossy().to_string();
 
-            // Infer the page name from the page filename.
-            let mut page_name = path.strip_prefix(&content_dir).unwrap().to_path_buf();
-            page_name.set_extension("");
-            page.name = page_name.to_string_lossy().to_string();
-
-            Ok(page)
+                Ok(page)
+            } else {
+                bail!("Invalid front matter in {:?}", path);
+            }
         })
         .collect::<Result<Vec<Page>>>()
 }

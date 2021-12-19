@@ -5,6 +5,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+aho-corasick = "0.7"
 anyhow = "1"
 atom_syndication = { version = "0.11", features = ["with-serde"] }
 chrono = "0.4"
@@ -13,7 +14,6 @@ ctor = "0.1"
 globset = "0.4"
 globwalk = "0.8"
 grass = { version = "0.10", default-features = false, features = ["random"] }
-gray_matter = "0.2"
 katex = "0.4"
 lazy_static = "1"
 notify = "4"
