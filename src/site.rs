@@ -19,7 +19,6 @@ use katex::Opts;
 use lazy_static::lazy_static;
 use notify::{DebouncedEvent, RecursiveMode, Watcher};
 use pulldown_cmark::{html, CodeBlockKind, Event, Options, Parser, Tag};
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use syntect::highlighting::ThemeSet;
 use syntect::html::highlighted_html_for_string;
@@ -150,7 +149,7 @@ fn load_pages(content_dir: &Path) -> Result<Vec<Page>> {
     let page_paths = find_pages(content_dir)?;
     let matter = Matter::<engine::TOML>::new();
     page_paths
-        .par_iter()
+        .iter()
         .map(|path| {
             // Read the file contents.
             let s = fs::read_to_string(&path)
@@ -208,7 +207,7 @@ fn copy_assets(dir: &Path, target_dir: &Path) -> Result<()> {
 
     // Copy the files over in parallel.
     files
-        .par_iter()
+        .iter()
         .map(|e| {
             let dst = target_dir.join(e.path().strip_prefix(&static_dir).unwrap());
             tracing::debug!(src=?e.path(), dst=?dst, "copying asset");
@@ -237,7 +236,7 @@ fn render_sass(dir: &Path, target_dir: &Path, sass: &SassConfig) -> Result<()> {
     }
 
     sass.targets
-        .par_iter()
+        .iter()
         .map(|(output, input)| {
             tracing::debug!(input=?input, output=?output, "rendering sass file");
             let css_path = css_dir.join(output);
@@ -263,7 +262,7 @@ fn render_markdown(pages: &mut [Page], theme: &str) -> Result<()> {
     let block_opts = Opts::builder().display_mode(true).build()?;
 
     pages
-        .par_iter_mut()
+        .iter_mut()
         .map(|page| {
             tracing::debug!(page=?page.name, "parsing markdown");
             let mut out = String::with_capacity(page.content.len() * 2);
@@ -359,7 +358,7 @@ fn render_html(dir: &Path, target_dir: &Path, pages: &[Page]) -> Result<()> {
             .as_ref(),
     )?;
     pages
-        .par_iter()
+        .iter()
         .map(|page| {
             let path = if page.name == "index" {
                 target_dir.join(INDEX_FILENAME)
