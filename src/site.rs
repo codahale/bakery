@@ -92,11 +92,14 @@ pub fn build<P: AsRef<Path> + Debug>(dir: P, drafts: bool) -> Result<()> {
         .collect::<Vec<Page>>();
 
     // Render Markdown and LaTeX.
-    render_markdown(&mut pages, &config.theme)?;
-
-    // Removes all files and subdirectories from the `target` subdirectory and re-creates it.
     let target_dir = dir.join(TARGET_SUBDIR);
-    clean_target_dir(&target_dir)?;
+    let (clean, markdown) = rayon::join(
+        || clean_target_dir(&target_dir),
+        || render_markdown(&mut pages, &config.theme),
+    );
+
+    // Check results.
+    clean.and(markdown)?;
 
     // Copy all asset files.
     // Render SASS files.
