@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 use std::time::Duration;
 use std::{fs, thread};
 
@@ -77,6 +77,7 @@ pub fn build<P: AsRef<Path> + Debug>(dir: P, drafts: bool) -> Result<()> {
         .as_ref()
         .canonicalize()
         .with_context(|| format!("Failed to find site directory: {:?}", dir))?;
+    let dir = Arc::new(dir);
 
     // Load the site config.
     let config = load_config(&dir)?;
@@ -90,9 +91,9 @@ pub fn build<P: AsRef<Path> + Debug>(dir: P, drafts: bool) -> Result<()> {
         .collect::<Vec<Page>>();
 
     // Clean the target directory in another thread.
-    let target_dir = dir.join(TARGET_SUBDIR);
+    let target_dir = Arc::new(dir.join(TARGET_SUBDIR));
     let clean = {
-        let target_dir = dir.join(TARGET_SUBDIR);
+        let target_dir = target_dir.clone();
         thread::spawn(move || clean_target_dir(&target_dir))
     };
 
@@ -105,14 +106,14 @@ pub fn build<P: AsRef<Path> + Debug>(dir: P, drafts: bool) -> Result<()> {
     // Copy all asset files in another thread.
     let assets = {
         let dir = dir.clone();
-        let target_dir = dir.join(TARGET_SUBDIR);
+        let target_dir = target_dir.clone();
         thread::spawn(move || copy_assets(&dir, &target_dir))
     };
 
     // Render SASS files in another thread.
     let sass = {
         let dir = dir.clone();
-        let target_dir = dir.join(TARGET_SUBDIR);
+        let target_dir = target_dir.clone();
         let sass = config.sass;
         thread::spawn(move || render_sass(&dir, &target_dir, &sass))
     };
