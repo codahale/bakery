@@ -205,18 +205,15 @@ fn copy_assets(dir: &Path, target_dir: &Path) -> Result<()> {
             .with_context(|| format!("Error creating directory: {:?}", &dst))?;
     }
 
-    // Copy the files over in parallel.
-    files
-        .iter()
-        .map(|e| {
-            let dst = target_dir.join(e.path().strip_prefix(&static_dir).unwrap());
-            tracing::debug!(src=?e.path(), dst=?dst, "copying asset");
-            fs::copy(e.path(), &dst)
-                .with_context(|| format!("Error copying asset {:?} to {:?}", e.path(), &dst))?;
+    // Copy the files over.
+    files.iter().try_for_each(|e| {
+        let dst = target_dir.join(e.path().strip_prefix(&static_dir).unwrap());
+        tracing::debug!(src=?e.path(), dst=?dst, "copying asset");
+        fs::copy(e.path(), &dst)
+            .with_context(|| format!("Error copying asset {:?} to {:?}", e.path(), &dst))?;
 
-            Ok(())
-        })
-        .collect::<Result<()>>()
+        Ok(())
+    })
 }
 
 #[instrument]
@@ -235,19 +232,16 @@ fn render_sass(dir: &Path, target_dir: &Path, sass: &SassConfig) -> Result<()> {
         options = options.load_path(path);
     }
 
-    sass.targets
-        .iter()
-        .map(|(output, input)| {
-            tracing::debug!(input=?input, output=?output, "rendering sass file");
-            let css_path = css_dir.join(output);
-            let sass_path = sass_dir.join(input);
+    sass.targets.iter().try_for_each(|(output, input)| {
+        tracing::debug!(input=?input, output=?output, "rendering sass file");
+        let css_path = css_dir.join(output);
+        let sass_path = sass_dir.join(input);
 
-            let css = grass::from_path(sass_path.to_string_lossy().as_ref(), &options)
-                .map_err(|e| anyhow::Error::msg(e.to_string()))?;
+        let css = grass::from_path(sass_path.to_string_lossy().as_ref(), &options)
+            .map_err(|e| anyhow::Error::msg(e.to_string()))?;
 
-            fs::write(&css_path, css).with_context(|| format!("Error writing {:?}", &css_path))
-        })
-        .collect::<Result<()>>()
+        fs::write(&css_path, css).with_context(|| format!("Error writing {:?}", &css_path))
+    })
 }
 
 #[instrument(skip(pages))]
@@ -261,91 +255,87 @@ fn render_markdown(pages: &mut [Page], theme: &str) -> Result<()> {
     let inline_opts = Opts::builder().display_mode(false).build()?;
     let block_opts = Opts::builder().display_mode(true).build()?;
 
-    pages
-        .iter_mut()
-        .map(|page| {
-            tracing::debug!(page=?page.name, "parsing markdown");
-            let mut out = String::with_capacity(page.content.len() * 2);
-            let mut fence_kind: Option<String> = None;
-            let mut events = Vec::with_capacity(1024);
-            for event in Parser::new_ext(&page.content, md_opts) {
-                match &event {
-                    Event::Code(s) => {
-                        if s.starts_with('$') && s.ends_with('$') {
-                            // Convert inline LaTeX blocks (e.g. `$N+1`) to HTML.
-                            let s = &s[1..s.len() - 1];
-                            tracing::debug!(block=?s, "rendering inline equation");
-                            events.push(Event::Html(
-                                katex::render_with_opts(s, &inline_opts)?.into(),
-                            ));
-                        } else {
-                            // Pass regular inline code blocks on to the formatter.
-                            events.push(event);
-                        }
+    pages.iter_mut().try_for_each(|page| {
+        tracing::debug!(page=?page.name, "parsing markdown");
+        let mut out = String::with_capacity(page.content.len() * 2);
+        let mut fence_kind: Option<String> = None;
+        let mut events = Vec::with_capacity(1024);
+        for event in Parser::new_ext(&page.content, md_opts) {
+            match &event {
+                Event::Code(s) => {
+                    if s.starts_with('$') && s.ends_with('$') {
+                        // Convert inline LaTeX blocks (e.g. `$N+1`) to HTML.
+                        let s = &s[1..s.len() - 1];
+                        tracing::debug!(block=?s, "rendering inline equation");
+                        events.push(Event::Html(
+                            katex::render_with_opts(s, &inline_opts)?.into(),
+                        ));
+                    } else {
+                        // Pass regular inline code blocks on to the formatter.
+                        events.push(event);
                     }
-                    Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(kind))) => {
-                        // If the fenced code block doesn't have a kind, pass it on directly.
-                        if kind.is_empty() {
-                            events.push(event);
-                        } else {
-                            // Otherwise, record the fenced block kind, but don't pass the start
-                            // on to the formatter. We'll handle our own <pre><code> blocking.
-                            fence_kind = Some(kind.to_string());
-                        }
-                    }
-                    Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(_))) => {
-                        // If the fenced code block doesn't have a kind, pass it on directly.
-                        if fence_kind.is_none() {
-                            events.push(event);
-                        } else {
-                            // Reset the fenced block kind. Again, don't pass the end on to the
-                            // formatter.
-                            fence_kind = None;
-                        }
-                    }
-                    Event::Text(s) => {
-                        // If we've previously recorded a code block fence kind, then this text
-                        // is the contents of a fenced code block with a specified kind.
-                        if let Some(kind) = &fence_kind {
-                            if kind.as_str() == "latex" {
-                                // Render LaTeX as HTML using KaTeX.
-                                tracing::debug!(block=?s, "rendering display equation");
-                                let html = katex::render_with_opts(s, &block_opts)?;
-                                events.push(Event::Html(html.into()))
-                            } else if let Some(syntax) = SYNTAX_SET.find_syntax_by_token(kind) {
-                                // If we can find a Syntect syntax for the given kind, format it
-                                // as syntax highlighted HTML.
-                                tracing::debug!(kind=?kind, block=?s, "rendering code block");
-                                let html =
-                                    highlighted_html_for_string(s, &SYNTAX_SET, syntax, theme);
-                                events.push(Event::Html(html.into()))
-                            } else {
-                                // If we don't know what kind this code is, just slap it in a
-                                // <pre><code> block.
-                                tracing::debug!(block=?s, "rendering pre block");
-                                events.extend_from_slice(&[
-                                    Event::Html("<pre><code>".into()),
-                                    Event::Text(s.clone()),
-                                    Event::Html("</code></pre>".into()),
-                                ]);
-                            }
-                        } else {
-                            // If we're not in a fenced code block, just pass the text on.
-                            events.push(event);
-                        }
-                    }
-                    // Pass all other events on untouched.
-                    _ => events.push(event),
                 }
+                Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(kind))) => {
+                    // If the fenced code block doesn't have a kind, pass it on directly.
+                    if kind.is_empty() {
+                        events.push(event);
+                    } else {
+                        // Otherwise, record the fenced block kind, but don't pass the start
+                        // on to the formatter. We'll handle our own <pre><code> blocking.
+                        fence_kind = Some(kind.to_string());
+                    }
+                }
+                Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(_))) => {
+                    // If the fenced code block doesn't have a kind, pass it on directly.
+                    if fence_kind.is_none() {
+                        events.push(event);
+                    } else {
+                        // Reset the fenced block kind. Again, don't pass the end on to the
+                        // formatter.
+                        fence_kind = None;
+                    }
+                }
+                Event::Text(s) => {
+                    // If we've previously recorded a code block fence kind, then this text
+                    // is the contents of a fenced code block with a specified kind.
+                    if let Some(kind) = &fence_kind {
+                        if kind.as_str() == "latex" {
+                            // Render LaTeX as HTML using KaTeX.
+                            tracing::debug!(block=?s, "rendering display equation");
+                            let html = katex::render_with_opts(s, &block_opts)?;
+                            events.push(Event::Html(html.into()))
+                        } else if let Some(syntax) = SYNTAX_SET.find_syntax_by_token(kind) {
+                            // If we can find a Syntect syntax for the given kind, format it
+                            // as syntax highlighted HTML.
+                            tracing::debug!(kind=?kind, block=?s, "rendering code block");
+                            let html = highlighted_html_for_string(s, &SYNTAX_SET, syntax, theme);
+                            events.push(Event::Html(html.into()))
+                        } else {
+                            // If we don't know what kind this code is, just slap it in a
+                            // <pre><code> block.
+                            tracing::debug!(block=?s, "rendering pre block");
+                            events.extend_from_slice(&[
+                                Event::Html("<pre><code>".into()),
+                                Event::Text(s.clone()),
+                                Event::Html("</code></pre>".into()),
+                            ]);
+                        }
+                    } else {
+                        // If we're not in a fenced code block, just pass the text on.
+                        events.push(event);
+                    }
+                }
+                // Pass all other events on untouched.
+                _ => events.push(event),
             }
+        }
 
-            // Render as HTML.
-            html::push_html(&mut out, events.into_iter());
-            page.content = out;
+        // Render as HTML.
+        html::push_html(&mut out, events.into_iter());
+        page.content = out;
 
-            Ok(())
-        })
-        .collect()
+        Ok(())
+    })
 }
 
 #[instrument(skip(pages))]
@@ -357,33 +347,30 @@ fn render_html(dir: &Path, target_dir: &Path, pages: &[Page]) -> Result<()> {
             .to_string_lossy()
             .as_ref(),
     )?;
-    pages
-        .iter()
-        .map(|page| {
-            let path = if page.name == "index" {
-                target_dir.join(INDEX_FILENAME)
-            } else {
-                target_dir.join(&page.name).join(INDEX_FILENAME)
-            };
+    pages.iter().try_for_each(|page| {
+        let path = if page.name == "index" {
+            target_dir.join(INDEX_FILENAME)
+        } else {
+            target_dir.join(&page.name).join(INDEX_FILENAME)
+        };
 
-            if let Some(parent) = path.parent() {
-                let _ = fs::create_dir(parent);
-            }
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir(parent);
+        }
 
-            let f = BufWriter::new(
-                File::create(&path).with_context(|| format!("Error creating {:?}", &path))?,
-            );
+        let f = BufWriter::new(
+            File::create(&path).with_context(|| format!("Error creating {:?}", &path))?,
+        );
 
-            let mut context = TeraContext::from_serialize(page)
-                .with_context(|| format!("Error rendering page {}", page.name))?;
-            context.insert("pages", pages);
+        let mut context = TeraContext::from_serialize(page)
+            .with_context(|| format!("Error rendering page {}", page.name))?;
+        context.insert("pages", pages);
 
-            tracing::debug!(page=?page.name, dst=?path, "rendered html");
-            templates
-                .render_to(&page.template, &context, f)
-                .with_context(|| format!("Error rendering page {}", page.name))
-        })
-        .collect()
+        tracing::debug!(page=?page.name, dst=?path, "rendered html");
+        templates
+            .render_to(&page.template, &context, f)
+            .with_context(|| format!("Error rendering page {}", page.name))
+    })
 }
 
 #[instrument(skip(pages))]
