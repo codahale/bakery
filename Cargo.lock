@@ -86,7 +86,6 @@ dependencies = [
  "globwalk",
  "grass",
  "gray_matter",
- "itertools",
  "katex",
  "lazy_static",
  "notify",

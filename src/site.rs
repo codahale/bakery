@@ -14,7 +14,6 @@ use ctor::ctor;
 use globwalk::{FileType, GlobWalkerBuilder};
 use grass::OutputStyle;
 use gray_matter::{engine, Matter};
-use itertools::Itertools;
 use katex::Opts;
 use lazy_static::lazy_static;
 use notify::{DebouncedEvent, RecursiveMode, Watcher};
@@ -179,11 +178,14 @@ fn load_pages(content_dir: &Path) -> Result<Vec<Page>> {
 
 #[instrument]
 fn find_pages(content_dir: &Path) -> Result<Vec<PathBuf>> {
-    Ok(GlobWalkerBuilder::new(&content_dir, "*.md")
+    GlobWalkerBuilder::new(&content_dir, "*.md")
         .file_type(FileType::FILE)
         .build()?
-        .map_ok(|e| e.into_path())
-        .collect::<walkdir::Result<Vec<PathBuf>>>()?)
+        .map(|r| {
+            r.map(walkdir::DirEntry::into_path)
+                .map_err(anyhow::Error::new)
+        })
+        .collect::<Result<Vec<PathBuf>>>()
 }
 
 #[instrument]

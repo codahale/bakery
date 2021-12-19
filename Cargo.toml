@@ -13,7 +13,6 @@ ctor = "0.1"
 globwalk = "0.8"
 grass = { version = "0.10", default-features = false, features = ["random"] }
 gray_matter = "0.2"
-itertools = "0.10"
 katex = "0.4"
 lazy_static = "1"
 notify = "4"
