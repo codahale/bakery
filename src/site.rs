@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::fs;
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
+use std::{fs, thread};
 
 use anyhow::{anyhow, bail, Context, Result};
 use atom_syndication::{ContentBuilder, Entry, EntryBuilder, FeedBuilder, Text};
@@ -84,45 +84,55 @@ pub fn build<P: AsRef<Path> + Debug>(dir: P, drafts: bool) -> Result<()> {
     // Scan the content subdirectory for .md files and load them, parsing the TOML front matter.
     // Filter out drafts, if necessary.
     let content_dir = dir.join(CONTENT_SUBDIR);
-    let mut pages = load_pages(&content_dir)?
+    let pages = load_pages(&content_dir)?
         .into_iter()
         .filter(|p| drafts || !p.draft)
         .collect::<Vec<Page>>();
 
-    // Render Markdown and LaTeX.
+    // Clean the target directory in another thread.
     let target_dir = dir.join(TARGET_SUBDIR);
-    let (clean, markdown) = rayon::join(
-        || clean_target_dir(&target_dir),
-        || render_markdown(&mut pages, &config.theme),
-    );
+    let clean = {
+        let target_dir = dir.join(TARGET_SUBDIR);
+        thread::spawn(move || clean_target_dir(&target_dir))
+    };
 
-    // Check results.
-    clean.and(markdown)?;
+    // Render Markdown and LaTeX in another thread.
+    let markdown = thread::spawn(move || render_markdown(pages, &config.theme));
 
-    // Copy all asset files.
-    // Render SASS files.
+    // Wait for the target directoy to be cleaned before using it.
+    clean.join().unwrap()?;
+
+    // Copy all asset files in another thread.
+    let assets = {
+        let dir = dir.clone();
+        let target_dir = dir.join(TARGET_SUBDIR);
+        thread::spawn(move || copy_assets(&dir, &target_dir))
+    };
+
+    // Render SASS files in another thread.
+    let sass = {
+        let dir = dir.clone();
+        let target_dir = dir.join(TARGET_SUBDIR);
+        let sass = config.sass;
+        thread::spawn(move || render_sass(&dir, &target_dir, &sass))
+    };
+
+    // Wait for fully rendered pages.
+    let pages = markdown.join().unwrap()?;
+
     // Render HTML files.
-    // Render Atom feed.
-    let ((assets, sass), (html, feed)) = rayon::join(
-        || {
-            rayon::join(
-                || copy_assets(&dir, &target_dir),
-                || render_sass(&dir, &target_dir, &config.sass),
-            )
-        },
-        || {
-            rayon::join(
-                || render_html(&dir, &target_dir, &pages),
-                || render_feed(&config.title, &target_dir, config.base_url.as_str(), &pages),
-            )
-        },
-    );
+    render_html(&dir, &target_dir, &pages)?;
 
-    assets
-        .and(sass)
-        .and(html)
-        .and(feed)
-        .map(|_| tracing::info!("site built"))
+    // Render Atom feed.
+    render_feed(&config.title, &target_dir, config.base_url.as_str(), &pages)?;
+
+    // Wait for assets and SASS to complete.
+    assets.join().unwrap()?;
+    sass.join().unwrap()?;
+
+    tracing::info!("site built");
+
+    Ok(())
 }
 
 #[instrument]
@@ -247,7 +257,7 @@ fn render_sass(dir: &Path, target_dir: &Path, sass: &SassConfig) -> Result<()> {
 }
 
 #[instrument(skip(pages))]
-fn render_markdown(pages: &mut [Page], theme: &str) -> Result<()> {
+fn render_markdown(mut pages: Vec<Page>, theme: &str) -> Result<Vec<Page>> {
     let md_opts = Options::all();
     let theme = THEME_SET
         .themes
@@ -257,7 +267,7 @@ fn render_markdown(pages: &mut [Page], theme: &str) -> Result<()> {
     let inline_opts = Opts::builder().display_mode(false).build()?;
     let block_opts = Opts::builder().display_mode(true).build()?;
 
-    pages.iter_mut().try_for_each(|page| {
+    for page in pages.iter_mut() {
         tracing::debug!(page=?page.name, "parsing markdown");
         let mut out = String::with_capacity(page.content.len() * 2);
         let mut fence_kind: Option<String> = None;
@@ -335,9 +345,9 @@ fn render_markdown(pages: &mut [Page], theme: &str) -> Result<()> {
         // Render as HTML.
         html::push_html(&mut out, events.into_iter());
         page.content = out;
+    }
 
-        Ok(())
-    })
+    Ok(pages)
 }
 
 #[instrument(skip(pages))]
@@ -473,6 +483,8 @@ lazy_static! {
 
 #[ctor]
 fn init() {
-    rayon::spawn(|| lazy_static::initialize(&SYNTAX_SET));
-    rayon::spawn(|| lazy_static::initialize(&THEME_SET));
+    thread::spawn(|| {
+        lazy_static::initialize(&SYNTAX_SET);
+        lazy_static::initialize(&THEME_SET);
+    });
 }
