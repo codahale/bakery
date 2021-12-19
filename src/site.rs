@@ -26,7 +26,7 @@ use syntect::parsing::SyntaxSet;
 use tera::{Context as TeraContext, Tera};
 use tracing::instrument;
 use url::Url;
-use walkdir::{DirEntry, WalkDir};
+use walkdir::WalkDir;
 
 #[instrument]
 pub fn watch<P: AsRef<Path> + Debug>(dir: P, drafts: bool) -> Result<()> {
@@ -208,30 +208,31 @@ fn find_pages(content_dir: &Path) -> Result<Vec<PathBuf>> {
 fn copy_assets(dir: &Path, target_dir: &Path) -> Result<()> {
     let static_dir = dir.join(STATIC_SUBDIR);
 
-    // Collect asset directories and files.
-    let (dirs, files): (Vec<DirEntry>, Vec<DirEntry>) = WalkDir::new(&static_dir)
+    // Traverse the static dir, directories-first.
+    WalkDir::new(&static_dir)
+        .contents_first(false)
         .into_iter()
-        .filter_map(|r| r.ok())
-        .filter(|e| e.file_type().is_dir() || e.file_type().is_file())
-        .partition(|e| e.file_type().is_dir());
+        .try_for_each(|entry| {
+            let entry = entry?;
+            let is_dir = entry.file_type().is_dir();
+            let is_file = entry.file_type().is_file();
+            let src = entry.into_path();
+            let dst = target_dir.join(src.strip_prefix(&static_dir).unwrap());
 
-    // Create the asset directory structure.
-    for dir in dirs {
-        tracing::debug!(dir=?dir, "creating dir");
-        let dst = target_dir.join(dir.path().strip_prefix(&static_dir).unwrap());
-        fs::create_dir_all(&dst)
-            .with_context(|| format!("Error creating directory: {:?}", &dst))?;
-    }
+            if is_dir {
+                // Create directories as needed.
+                tracing::debug!(?src, ?dst, "creating dir");
+                fs::create_dir_all(&dst)
+                    .with_context(|| format!("Error creating directory: {:?}", &dst))?;
+            } else if is_file {
+                // Copy files.
+                tracing::debug!(?src, ?dst, "copying asset");
+                fs::copy(&src, &dst)
+                    .with_context(|| format!("Error copying asset {:?} to {:?}", &src, &dst))?;
+            }
 
-    // Copy the files over.
-    files.iter().try_for_each(|e| {
-        let dst = target_dir.join(e.path().strip_prefix(&static_dir).unwrap());
-        tracing::debug!(src=?e.path(), dst=?dst, "copying asset");
-        fs::copy(e.path(), &dst)
-            .with_context(|| format!("Error copying asset {:?} to {:?}", e.path(), &dst))?;
-
-        Ok(())
-    })
+            Ok(())
+        })
 }
 
 #[instrument]
