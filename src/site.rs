@@ -64,7 +64,7 @@ pub fn watch<P: AsRef<Path> + Debug>(dir: P, drafts: bool) -> Result<()> {
                 | DebouncedEvent::Rename(path, _) => {
                     // Ignore files in the target dir and temporary files.
                     if !ignored.is_match(&path) {
-                        tracing::info!(target:"rebuild", changed=?path);
+                        tracing::info!(changed=?path, "rebuild");
                         build(&dir, drafts)?;
                     }
                 }
@@ -252,7 +252,7 @@ fn render_sass(dir: &Path, target_dir: &Path, sass: &SassConfig) -> Result<()> {
     }
 
     sass.targets.iter().try_for_each(|(output, input)| {
-        tracing::debug!(input=?input, output=?output, "rendering sass file");
+        tracing::debug!(?input, ?output, "rendering sass file");
         let css_path = css_dir.join(output);
         let sass_path = sass_dir.join(input);
 
@@ -326,7 +326,7 @@ fn render_markdown(mut pages: Vec<Page>, theme: &str) -> Result<Vec<Page>> {
                         } else if let Some(syntax) = SYNTAX_SET.find_syntax_by_token(kind) {
                             // If we can find a Syntect syntax for the given kind, format it
                             // as syntax highlighted HTML.
-                            tracing::debug!(kind=?kind, block=?s, "rendering code block");
+                            tracing::debug!(?kind, block=?s, "rendering code block");
                             let html = highlighted_html_for_string(s, &SYNTAX_SET, syntax, theme);
                             events.push(Event::Html(html.into()))
                         } else {
