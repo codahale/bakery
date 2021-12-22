@@ -17,7 +17,7 @@ grass = { version = "0.10", default-features = false, features = ["random"] }
 katex = "0.4"
 lazy_static = "1"
 notify = "4"
-pulldown-cmark = "0.8"
+pulldown-cmark = "0.9"
 serde = "1"
 serde_json = "1"
 syntect = "4"
