@@ -49,9 +49,7 @@ pub fn watch<P: AsRef<Path> + Debug>(dir: P, drafts: bool) -> Result<()> {
     let ignored = GlobSetBuilder::new()
         .add(Glob::new("*~")?)
         .add(Glob::new(target_dir.to_string_lossy().as_ref())?)
-        .add(Glob::new(
-            target_dir.join("**").join("*").to_string_lossy().as_ref(),
-        )?)
+        .add(Glob::new(target_dir.join("**").join("*").to_string_lossy().as_ref())?)
         .build()?;
 
     loop {
@@ -90,10 +88,8 @@ pub fn build<P: AsRef<Path> + Debug>(dir: P, drafts: bool) -> Result<()> {
     // Scan the content subdirectory for .md files and load them, parsing the TOML front matter.
     // Filter out drafts, if necessary.
     let content_dir = dir.join(CONTENT_SUBDIR);
-    let pages = load_pages(&content_dir)?
-        .into_iter()
-        .filter(|p| drafts || !p.draft)
-        .collect::<Vec<Page>>();
+    let pages =
+        load_pages(&content_dir)?.into_iter().filter(|p| drafts || !p.draft).collect::<Vec<Page>>();
 
     // Clean the target directory in another thread.
     let target_dir = Arc::new(dir.join(TARGET_SUBDIR));
@@ -197,10 +193,7 @@ fn find_pages(content_dir: &Path) -> Result<Vec<PathBuf>> {
     GlobWalkerBuilder::new(&content_dir, "*.md")
         .file_type(FileType::FILE)
         .build()?
-        .map(|r| {
-            r.map(walkdir::DirEntry::into_path)
-                .map_err(anyhow::Error::new)
-        })
+        .map(|r| r.map(walkdir::DirEntry::into_path).map_err(anyhow::Error::new))
         .collect::<Result<Vec<PathBuf>>>()
 }
 
@@ -209,30 +202,27 @@ fn copy_assets(dir: &Path, target_dir: &Path) -> Result<()> {
     let static_dir = dir.join(STATIC_SUBDIR);
 
     // Traverse the static dir, directories-first.
-    WalkDir::new(&static_dir)
-        .contents_first(false)
-        .into_iter()
-        .try_for_each(|entry| {
-            let entry = entry?;
-            let is_dir = entry.file_type().is_dir();
-            let is_file = entry.file_type().is_file();
-            let src = entry.into_path();
-            let dst = target_dir.join(src.strip_prefix(&static_dir).unwrap());
+    WalkDir::new(&static_dir).contents_first(false).into_iter().try_for_each(|entry| {
+        let entry = entry?;
+        let is_dir = entry.file_type().is_dir();
+        let is_file = entry.file_type().is_file();
+        let src = entry.into_path();
+        let dst = target_dir.join(src.strip_prefix(&static_dir).unwrap());
 
-            if is_dir {
-                // Create directories as needed.
-                tracing::debug!(?src, ?dst, "creating dir");
-                fs::create_dir_all(&dst)
-                    .with_context(|| format!("Error creating directory: {:?}", &dst))?;
-            } else if is_file {
-                // Copy files.
-                tracing::debug!(?src, ?dst, "copying asset");
-                fs::copy(&src, &dst)
-                    .with_context(|| format!("Error copying asset {:?} to {:?}", &src, &dst))?;
-            }
+        if is_dir {
+            // Create directories as needed.
+            tracing::debug!(?src, ?dst, "creating dir");
+            fs::create_dir_all(&dst)
+                .with_context(|| format!("Error creating directory: {:?}", &dst))?;
+        } else if is_file {
+            // Copy files.
+            tracing::debug!(?src, ?dst, "copying asset");
+            fs::copy(&src, &dst)
+                .with_context(|| format!("Error copying asset {:?} to {:?}", &src, &dst))?;
+        }
 
-            Ok(())
-        })
+        Ok(())
+    })
 }
 
 #[instrument]
@@ -266,10 +256,8 @@ fn render_sass(dir: &Path, target_dir: &Path, sass: &SassConfig) -> Result<()> {
 #[instrument(skip(pages))]
 fn render_markdown(mut pages: Vec<Page>, theme: &str) -> Result<Vec<Page>> {
     let md_opts = Options::all();
-    let theme = THEME_SET
-        .themes
-        .get(theme)
-        .ok_or_else(|| anyhow!("Invalid syntax theme: {:?}", theme))?;
+    let theme =
+        THEME_SET.themes.get(theme).ok_or_else(|| anyhow!("Invalid syntax theme: {:?}", theme))?;
 
     let inline_opts = Opts::builder().display_mode(false).build()?;
     let block_opts = Opts::builder().display_mode(true).build()?;
@@ -286,9 +274,7 @@ fn render_markdown(mut pages: Vec<Page>, theme: &str) -> Result<Vec<Page>> {
                         // Convert inline LaTeX blocks (e.g. `$N+1`) to HTML.
                         let s = &s[1..s.len() - 1];
                         tracing::debug!(block=?s, "rendering inline equation");
-                        events.push(Event::Html(
-                            katex::render_with_opts(s, &inline_opts)?.into(),
-                        ));
+                        events.push(Event::Html(katex::render_with_opts(s, &inline_opts)?.into()));
                     } else {
                         // Pass regular inline code blocks on to the formatter.
                         events.push(event);
@@ -359,13 +345,8 @@ fn render_markdown(mut pages: Vec<Page>, theme: &str) -> Result<Vec<Page>> {
 
 #[instrument(skip(pages))]
 fn render_html(dir: &Path, target_dir: &Path, pages: &[Page]) -> Result<()> {
-    let templates = Tera::new(
-        dir.join(TEMPLATES_DIR)
-            .join("**")
-            .join("*")
-            .to_string_lossy()
-            .as_ref(),
-    )?;
+    let templates =
+        Tera::new(dir.join(TEMPLATES_DIR).join("**").join("*").to_string_lossy().as_ref())?;
     pages.iter().try_for_each(|page| {
         let path = if page.name == "index" {
             target_dir.join(INDEX_FILENAME)
@@ -400,11 +381,7 @@ fn render_feed(title: &str, target_dir: &Path, base_url: &str, pages: &[Page]) -
         .map(|page| {
             EntryBuilder::default()
                 .id(&page.name)
-                .content(
-                    ContentBuilder::default()
-                        .value(page.content.clone())
-                        .build(),
-                )
+                .content(ContentBuilder::default().value(page.content.clone()).build())
                 .title(Text::plain(&page.title))
                 .updated(page.date.unwrap())
                 .build()
