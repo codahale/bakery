@@ -9,7 +9,7 @@ aho-corasick = "0.7"
 anyhow = "1"
 atom_syndication = { version = "0.11", features = ["with-serde"] }
 chrono = "0.4"
-clap = { version = "3.0.0-rc.8", features = ["derive"] }
+clap = { version = "3.0.0-rc.9", features = ["derive"] }
 ctor = "0.1"
 globset = "0.4"
 globwalk = "0.8"
