@@ -3,6 +3,7 @@ name = "bakery"
 description = "A simple static site generator."
 version = "0.1.0"
 edition = "2021"
+include = ["src/**/*", "LICENSE-*", "README.md"]
 
 [dependencies]
 aho-corasick = "0.7"
