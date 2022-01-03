@@ -15,8 +15,8 @@ use globset::{Glob, GlobSetBuilder};
 use globwalk::{FileType, GlobWalkerBuilder};
 use grass::OutputStyle;
 use katex::Opts;
-use lazy_static::lazy_static;
 use notify::{DebouncedEvent, RecursiveMode, Watcher};
+use once_cell::sync::Lazy;
 use pulldown_cmark::{html, CodeBlockKind, Event, Options, Parser, Tag};
 use serde::{Deserialize, Serialize};
 use syntect::highlighting::ThemeSet;
@@ -459,7 +459,5 @@ const CONFIG_FILENAME: &str = "bakery.toml";
 const FEED_FILENAME: &str = "atom.xml";
 const INDEX_FILENAME: &str = "index.html";
 
-lazy_static! {
-    static ref SYNTAX_SET: SyntaxSet = SyntaxSet::load_defaults_newlines();
-    static ref THEME_SET: ThemeSet = ThemeSet::load_defaults();
-}
+static SYNTAX_SET: Lazy<SyntaxSet> = Lazy::new(SyntaxSet::load_defaults_newlines);
+static THEME_SET: Lazy<ThemeSet> = Lazy::new(ThemeSet::load_defaults);
