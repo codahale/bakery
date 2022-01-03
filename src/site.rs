@@ -19,7 +19,7 @@ use notify::{DebouncedEvent, RecursiveMode, Watcher};
 use once_cell::sync::Lazy;
 use pulldown_cmark::{html, CodeBlockKind, Event, Options, Parser, Tag};
 use serde::{Deserialize, Serialize};
-use syntect::highlighting::ThemeSet;
+use syntect::highlighting::{Theme, ThemeSet};
 use syntect::html::highlighted_html_for_string;
 use syntect::parsing::SyntaxSet;
 use tera::{Context as TeraContext, Tera};
@@ -98,7 +98,11 @@ pub fn build<P: AsRef<Path> + Debug>(dir: P, drafts: bool) -> Result<()> {
     };
 
     // Render Markdown and LaTeX in another thread.
-    let markdown = thread::spawn(move || render_markdown(pages, &config.theme));
+    let theme = THEME_SET
+        .themes
+        .get(&config.theme)
+        .ok_or_else(|| anyhow!("Invalid syntax theme: {:?}", &config.theme))?;
+    let markdown = thread::spawn(move || render_markdown(pages, theme));
 
     // Wait for the target directoy to be cleaned before using it.
     clean.join().unwrap()?;
@@ -252,12 +256,9 @@ fn render_sass(dir: &Path, target_dir: &Path, sass: &SassConfig) -> Result<()> {
     })
 }
 
-#[instrument(skip(pages))]
-fn render_markdown(mut pages: Vec<Page>, theme: &str) -> Result<Vec<Page>> {
+#[instrument(skip(pages, theme))]
+fn render_markdown(mut pages: Vec<Page>, theme: &Theme) -> Result<Vec<Page>> {
     let md_opts = Options::all();
-    let theme =
-        THEME_SET.themes.get(theme).ok_or_else(|| anyhow!("Invalid syntax theme: {:?}", theme))?;
-
     let inline_opts = Opts::builder().display_mode(false).build()?;
     let block_opts = Opts::builder().display_mode(true).build()?;
 
