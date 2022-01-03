@@ -11,7 +11,6 @@ use aho_corasick::AhoCorasick;
 use anyhow::{anyhow, bail, Context, Result};
 use atom_syndication::{ContentBuilder, Entry, EntryBuilder, FeedBuilder, Text};
 use chrono::{DateTime, Utc};
-use ctor::ctor;
 use globset::{Glob, GlobSetBuilder};
 use globwalk::{FileType, GlobWalkerBuilder};
 use grass::OutputStyle;
@@ -463,12 +462,4 @@ const INDEX_FILENAME: &str = "index.html";
 lazy_static! {
     static ref SYNTAX_SET: SyntaxSet = SyntaxSet::load_defaults_newlines();
     static ref THEME_SET: ThemeSet = ThemeSet::load_defaults();
-}
-
-#[ctor]
-fn init() {
-    thread::spawn(|| {
-        lazy_static::initialize(&SYNTAX_SET);
-        lazy_static::initialize(&THEME_SET);
-    });
 }

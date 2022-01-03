@@ -83,7 +83,6 @@ dependencies = [
  "atom_syndication",
  "chrono",
  "clap",
- "ctor",
  "globset",
  "globwalk",
  "grass",
@@ -288,16 +287,6 @@ checksum = "d82cfc11ce7f2c3faef78d8a684447b40d503d9681acebed6cb728d45940c4db"
 dependencies = [
  "cfg-if 1.0.0",
  "lazy_static",
-]
-
-[[package]]
-name = "ctor"
-version = "0.1.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ccc0a48a9b826acdf4028595adc9db92caea352f7af011a3034acd172a52a0aa"
-dependencies = [
- "quote",
- "syn",
 ]
 
 [[package]]
